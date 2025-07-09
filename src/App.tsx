@@ -22,16 +22,17 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
       {/* Splash Cursor Background */}
-      <div className="fixed inset-0 z-0 opacity-50">
+      <div className="fixed inset-0 z-0 opacity-30">
         <SplashCursor
           TRANSPARENT={true}
-          BACK_COLOR={{ r: 0.02, g: 0.01, b: 0.05 }}
-          SPLAT_RADIUS={0.15}
-          SPLAT_FORCE={4000}
-          CURL={15}
-          DENSITY_DISSIPATION={0.8}
-          VELOCITY_DISSIPATION={0.5}
-          COLOR_UPDATE_SPEED={5}
+          BACK_COLOR={{ r: 0.01, g: 0.01, b: 0.03 }}
+          SPLAT_RADIUS={0.12}
+          SPLAT_FORCE={2500}
+          CURL={8}
+          DENSITY_DISSIPATION={1.2}
+          VELOCITY_DISSIPATION={0.8}
+          COLOR_UPDATE_SPEED={2}
+          SHADING={false}
         />
       </div>
 
