@@ -1074,10 +1074,10 @@ function SplashCursor({
     }
 
     function generateColor() {
-      let c = HSVtoRGB(Math.random(), 1.0, 1.0);
-      c.r *= 0.15;
-      c.g *= 0.15;
-      c.b *= 0.15;
+      let c = HSVtoRGB(Math.random(), 0.8, 1.0);
+      c.r *= 0.6;
+      c.g *= 0.6;
+      c.b *= 0.6;
       return c;
     }
 
@@ -1238,13 +1238,13 @@ function SplashCursor({
     // Add automatic splats for background animation
     const autoSplat = () => {
       const color = generateColor();
-      color.r *= 0.8;
-      color.g *= 0.8;
-      color.b *= 0.8;
+      color.r *= 1.2;
+      color.g *= 1.2;
+      color.b *= 1.2;
       const x = Math.random();
       const y = Math.random();
-      const dx = (Math.random() - 0.5) * 20;
-      const dy = (Math.random() - 0.5) * 20;
+      const dx = (Math.random() - 0.5) * 25;
+      const dy = (Math.random() - 0.5) * 25;
       splat(x, y, dx, dy, color);
     };
 

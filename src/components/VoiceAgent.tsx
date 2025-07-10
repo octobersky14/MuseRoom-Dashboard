@@ -1,19 +1,15 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
-  MessageSquare,
-  Send,
-  Settings,
-} from "lucide-react";
+import { Volume2, VolumeX, Settings, Loader2 } from "lucide-react";
 import { useToast } from "./ui/use-toast";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
-// ElevenLabs API is handled via REST API calls
+import { useVoiceAssistant } from "../../useVoiceAssistant";
+import useDirectSpeechRecognition, {
+  RecognitionStatus,
+  TranscriptConfidence,
+} from "../../useDirectSpeechRecognition";
 
 interface Message {
   id: string;
@@ -28,642 +24,611 @@ interface ElevenLabsVoice {
   preview_url?: string;
 }
 
-export function VoiceAgent() {
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+interface VoiceAgentProps {
+  selectedVoice: string;
+  useElevenLabs: boolean;
+  availableVoices: ElevenLabsVoice[];
+  elevenLabsApiKey: string;
+}
+
+export function VoiceAgent({
+  selectedVoice,
+  useElevenLabs,
+  availableVoices,
+  elevenLabsApiKey,
+}: VoiceAgentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState("JBFqnCBsd6RMkjVDRZzb"); // Default ElevenLabs voice (George)
-  const [useElevenLabs, setUseElevenLabs] = useState(true);
-  const [availableVoices, setAvailableVoices] = useState<ElevenLabsVoice[]>([]);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
 
   const { toast } = useToast();
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const elevenLabsApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Initialize ElevenLabs
-  useEffect(() => {
-    if (elevenLabsApiKey) {
-      loadElevenLabsVoices();
-      setUseElevenLabs(true);
-    } else {
-      console.info(
-        "No ElevenLabs API key found, using Web Speech API fallback"
-      );
-      setUseElevenLabs(false);
-    }
-  }, [elevenLabsApiKey]);
+  // Use the sophisticated direct speech recognition hook
+  const speechRecognition = useDirectSpeechRecognition();
 
-  const loadElevenLabsVoices = async () => {
-    if (!elevenLabsApiKey) return;
-
-    try {
-      const response = await axios.get("https://api.elevenlabs.io/v1/voices", {
-        headers: {
-          "xi-api-key": elevenLabsApiKey,
-        },
-      });
-      if (response.data && response.data.voices) {
-        setAvailableVoices(response.data.voices.slice(0, 10)); // Limit to first 10 voices
-      }
-    } catch (error) {
-      console.warn("Failed to load ElevenLabs voices:", error);
-      setUseElevenLabs(false);
-    }
-  };
-
-  useEffect(() => {
-    // Initialize speech recognition
-    if ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) {
-      const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = "en-US";
-
-      recognitionRef.current.onresult = (event) => {
-        let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        setCurrentTranscript(transcript);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-        if (currentTranscript.trim()) {
-          processUserInput(currentTranscript.trim());
-        }
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-
-        let errorMessage = "Could not recognize speech. Please try again.";
-        let errorTitle = "Speech Recognition Error";
-
-        switch (event.error) {
-          case "network":
-            errorMessage =
-              "Network error. Please check your internet connection and try again.";
-            errorTitle = "Network Error";
-            break;
-          case "not-allowed":
-            errorMessage =
-              "Microphone access denied. Please allow microphone access and try again.";
-            errorTitle = "Microphone Permission Required";
-            break;
-          case "no-speech":
-            errorMessage =
-              "No speech detected. Please speak clearly and try again.";
-            errorTitle = "No Speech Detected";
-            break;
-          case "audio-capture":
-            errorMessage =
-              "Audio capture failed. Please check your microphone and try again.";
-            errorTitle = "Audio Capture Error";
-            break;
-          case "service-not-allowed":
-            errorMessage =
-              "Speech recognition service not allowed. Please try again later.";
-            errorTitle = "Service Not Available";
-            break;
-        }
-
-        toast({
-          title: errorTitle,
-          description: errorMessage,
-          variant: "destructive",
-        });
-      };
-
-      // Add welcome message
-      setTimeout(() => {
-        if (messages.length === 0) {
-          const welcomeMessage: Message = {
-            id: "welcome",
-            text: "Hello! I'm your MuseRoom Voice Agent. I can help you read Discord messages and send summaries. Try saying 'Hello' or 'Read latest Discord messages' to get started. Click the microphone button to begin!",
-            timestamp: new Date(),
-            isUser: false,
-          };
-          setMessages([welcomeMessage]);
-        }
-      }, 1000);
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [currentTranscript, messages.length]);
-
-  const startListening = () => {
-    if (recognitionRef.current) {
-      setIsListening(true);
-      setCurrentTranscript("");
-      recognitionRef.current.start();
-    } else {
+  // Use the advanced voice assistant hook with ElevenLabs integration
+  const voiceAssistant = useVoiceAssistant({
+    enabled: isVoiceEnabled && !isMuted,
+    onTranscript: handleUserTranscript,
+    circleElementRef: null, // Will be handled by the main GIF
+    muted: isMuted,
+    elevenLabsApiKey: useElevenLabs ? elevenLabsApiKey : "",
+    elevenLabsVoiceId: selectedVoice,
+    waveformCanvas: waveformCanvasRef.current,
+    onSpeakingChange: (speaking) => {
+      console.log("Assistant speaking:", speaking);
+    },
+    onError: (error) => {
+      console.error("Voice Assistant Error:", error);
       toast({
-        title: "Speech Recognition Not Available",
-        description: "Your browser doesn't support speech recognition.",
+        title: "Voice Assistant Error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle user speech transcript
+  function handleUserTranscript(transcript: string) {
+    if (!transcript.trim()) return;
+
+    console.log("User transcript received:", transcript);
+    setCurrentTranscript(transcript);
+    processUserInput(transcript.trim());
+  }
+
+  // Initialize with welcome message
+  useEffect(() => {
+    const welcomeMessage: Message = {
+      id: "welcome",
+      text: "Hello! Welcome to MuseRoom! Click the AI assistant animation above to start your voice assistant. I can help you read Discord messages and send summaries. Try saying 'Hello' or 'Read latest Discord messages' to get started!",
+      timestamp: new Date(),
+      isUser: false,
+    };
+    setMessages([welcomeMessage]);
+  }, []);
+
+  // Handle speech recognition errors
+  useEffect(() => {
+    if (speechRecognition.errorMessage) {
+      toast({
+        title: "Speech Recognition Error",
+        description: speechRecognition.errorMessage,
         variant: "destructive",
       });
     }
-  };
+  }, [speechRecognition.errorMessage, toast]);
 
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    setIsListening(false);
-  };
+  const processUserInput = useCallback(
+    async (userInput: string) => {
+      if (!userInput.trim()) return;
 
-  const processUserInput = async (userInput: string) => {
-    if (!userInput.trim()) return;
-
-    setIsProcessing(true);
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text: userInput,
-      timestamp: new Date(),
-      isUser: true,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setCurrentTranscript("");
-
-    try {
-      // Process user command and generate response
-      const response = await processCommand(userInput);
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: response,
+      setIsProcessing(true);
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: userInput,
         timestamp: new Date(),
-        isUser: false,
+        isUser: true,
       };
 
-      setMessages((prev) => [...prev, aiMessage]);
+      setMessages((prev) => [...prev, userMessage]);
+      setCurrentTranscript("");
 
-      // Use text-to-speech for AI response
-      await speakText(response);
-    } catch (error) {
-      console.error("Error processing command:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: "Sorry, I encountered an error processing your request.",
-        timestamp: new Date(),
-        isUser: false,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+      try {
+        // Process user command and generate response
+        const response = await processCommand(userInput);
+
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: response,
+          timestamp: new Date(),
+          isUser: false,
+        };
+
+        setMessages((prev) => [...prev, aiMessage]);
+
+        // Speak the response using the voice assistant
+        if (!isMuted && response) {
+          await voiceAssistant.speak(response);
+        }
+      } catch (error) {
+        console.error("Error processing user input:", error);
+        const errorMessage =
+          "I'm sorry, I encountered an error processing your request. Please try again.";
+
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: errorMessage,
+          timestamp: new Date(),
+          isUser: false,
+        };
+
+        setMessages((prev) => [...prev, aiMessage]);
+
+        if (!isMuted) {
+          await voiceAssistant.speak(errorMessage);
+        }
+
+        toast({
+          title: "Processing Error",
+          description: "Failed to process your request. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [isMuted, voiceAssistant, toast]
+  );
 
   const processCommand = async (command: string): Promise<string> => {
+    console.log("Processing command:", command);
+
     const lowerCommand = command.toLowerCase();
 
-    // Simple greeting responses can be handled locally
     if (lowerCommand.includes("hello") || lowerCommand.includes("hi")) {
-      return "Hello! I'm your voice assistant. I can help you read Discord messages, send summaries, or manage your Discord channels. What would you like me to do?";
+      return "Hello! Welcome to MuseRoom! I'm here to help you with Discord messages and summaries. What would you like me to do?";
     }
 
-    if (lowerCommand.includes("help")) {
-      return "I can help you with Discord messages. Try saying 'read latest Discord messages' or 'send Discord summary' to get started.";
-    }
-
-    // Route Discord-related commands to the webhook
     if (
-      lowerCommand.includes("discord") ||
-      lowerCommand.includes("message") ||
-      lowerCommand.includes("read") ||
-      lowerCommand.includes("send") ||
-      lowerCommand.includes("summary") ||
-      lowerCommand.includes("latest") ||
-      lowerCommand.includes("channel")
+      lowerCommand.includes("discord") &&
+      (lowerCommand.includes("read") || lowerCommand.includes("messages"))
     ) {
       return await handleDiscordCommand(command);
     }
 
-    // For other commands, also try the Discord webhook since the AI can handle various requests
-    return await handleDiscordCommand(command);
+    if (lowerCommand.includes("help")) {
+      return "I can help you read Discord messages and create summaries. Try saying 'Read latest Discord messages' or 'Show Discord summary'.";
+    }
+
+    return (
+      "I understand you said: " +
+      command +
+      ". I'm specialized in helping with Discord messages. Try asking me to read Discord messages or create summaries."
+    );
   };
 
   const handleDiscordCommand = async (command: string): Promise<string> => {
-    const N8N_WEBHOOK_URL =
-      import.meta.env.VITE_DISCORD_WEBHOOK_URL ||
-      "https://hadleycarr04.app.n8n.cloud/webhook/discord-message";
-
     try {
-      // Send the voice message to the n8n webhook as specified by boss
-      const response = await fetch(N8N_WEBHOOK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: command,
-          timestamp: new Date().toISOString(),
-          source: "voice_app",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-
-        // Check if the n8n automation returned a response
-        if (data && data.response) {
-          return data.response;
-        } else if (data && data.success) {
-          return "I've successfully processed your request through the Discord automation!";
-        } else {
-          return "Your message has been sent to the Discord automation system for processing.";
-        }
-      } else {
-        throw new Error(`Webhook responded with status: ${response.status}`);
-      }
+      // This would integrate with your Discord API
+      // For now, return a mock response
+      return "I would fetch the latest Discord messages for you. This feature is being implemented to connect with your Discord channels and provide message summaries.";
     } catch (error) {
-      console.error("Discord webhook error:", error);
-
-      // Provide helpful fallback response
-      return (
-        "I've received your voice command but couldn't connect to the Discord automation system right now. Your message was: '" +
-        command +
-        "'. The system would normally process this through AI analysis and handle Discord integration automatically."
-      );
+      console.error("Discord command error:", error);
+      return "I'm sorry, I couldn't fetch the Discord messages right now. Please check your connection and try again.";
     }
   };
 
-  const speakText = async (text: string) => {
-    try {
-      setIsSpeaking(true);
+  const toggleListening = () => {
+    if (speechRecognition.isListening) {
+      speechRecognition.stopListening();
+      voiceAssistant.stop();
+    } else {
+      speechRecognition.startListening();
+    }
+  };
 
-      // Try ElevenLabs first if available
-      if (useElevenLabs && elevenLabsApiKey) {
-        try {
-          const response = await axios.post(
-            `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
-            {
-              text: text,
-              model_id: "eleven_multilingual_v2",
-              voice_settings: {
-                stability: 0.5,
-                similarity_boost: 0.75,
-                style: 0.0,
-                use_speaker_boost: true,
-              },
-            },
-            {
-              headers: {
-                "xi-api-key": elevenLabsApiKey,
-                "Content-Type": "application/json",
-              },
-              responseType: "arraybuffer",
-            }
-          );
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+    if (!isMuted) {
+      voiceAssistant.interruptSpeak();
+    }
+  };
 
-          if (response.data) {
-            // Convert ArrayBuffer to AudioBuffer
-            const audioContext = audioContextRef.current || new AudioContext();
-            audioContextRef.current = audioContext;
+  const toggleVoiceEnabled = () => {
+    setIsVoiceEnabled(!isVoiceEnabled);
+    if (isVoiceEnabled) {
+      voiceAssistant.stop();
+      speechRecognition.stopListening();
+    }
+  };
 
-            const audioBuffer = await audioContext.decodeAudioData(
-              response.data
-            );
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
+  const getStatusColor = () => {
+    switch (speechRecognition.status) {
+      case RecognitionStatus.LISTENING:
+        return "text-green-500";
+      case RecognitionStatus.PROCESSING:
+        return "text-blue-500";
+      case RecognitionStatus.ERROR:
+        return "text-red-500";
+      default:
+        return "text-gray-500";
+    }
+  };
 
-            source.onended = () => {
-              setIsSpeaking(false);
-            };
+  const getConfidenceColor = () => {
+    switch (speechRecognition.confidence) {
+      case TranscriptConfidence.HIGH:
+        return "text-green-500";
+      case TranscriptConfidence.MEDIUM:
+        return "text-yellow-500";
+      case TranscriptConfidence.LOW:
+        return "text-red-500";
+      default:
+        return "text-gray-500";
+    }
+  };
 
-            source.start(0);
+  // Expose the toggle function globally so the GIF can trigger it
+  React.useEffect(() => {
+    (window as any).toggleVoiceListening = toggleListening;
+    return () => {
+      delete (window as any).toggleVoiceListening;
+    };
+  }, [toggleListening]);
 
-            toast({
-              title: "ElevenLabs Voice",
-              description: "Using high-quality AI voice synthesis",
-              variant: "default",
-            });
+  // Update the main GIF's visual state based on voice status
+  React.useEffect(() => {
+    const indicator = document.getElementById("voice-listening-indicator");
+    const statusText = document.getElementById("voice-status-text");
 
-            return;
-          }
-        } catch (elevenLabsError) {
-          console.warn(
-            "ElevenLabs failed, falling back to Web Speech API:",
-            elevenLabsError
-          );
-
-          toast({
-            title: "Fallback to Browser Voice",
-            description: "ElevenLabs unavailable, using browser voice",
-            variant: "default",
-          });
-        }
-      }
-
-      // Fallback to Web Speech API
-      if ("speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        utterance.volume = 0.8;
-
-        utterance.onend = () => {
-          setIsSpeaking(false);
-        };
-
-        utterance.onerror = () => {
-          setIsSpeaking(false);
-        };
-
-        window.speechSynthesis.speak(utterance);
-
-        if (!useElevenLabs) {
-          toast({
-            title: "Browser Voice",
-            description: "Add ElevenLabs API key for premium AI voices",
-            variant: "default",
-          });
-        }
+    if (indicator && statusText) {
+      if (speechRecognition.isListening) {
+        indicator.style.display = "block";
+        statusText.textContent = "🎤 Listening... Click again to stop";
+        statusText.className = "text-sm text-green-600 font-medium";
+      } else if (isProcessing) {
+        indicator.style.display = "none";
+        statusText.textContent = "⚡ Processing your request...";
+        statusText.className = "text-sm text-blue-600 font-medium";
       } else {
-        setIsSpeaking(false);
-        toast({
-          title: "Voice Not Available",
-          description: "Text-to-speech not supported in this browser",
-          variant: "destructive",
+        indicator.style.display = "none";
+        statusText.textContent =
+          "Voice assistant ready - Click the animation above to start";
+        statusText.className = "text-sm text-muted-foreground/70 font-medium";
+      }
+    }
+  }, [speechRecognition.isListening, isProcessing]);
+
+  // Connect audio levels to GIF animation speed and pulse
+  React.useEffect(() => {
+    const gif = document.getElementById("ai-assistant-gif");
+    const ring1 = document.getElementById("audio-ring-1");
+    const ring2 = document.getElementById("audio-ring-2");
+    const ring3 = document.getElementById("audio-ring-3");
+
+    if (!gif) return;
+
+    let userAnimationFrame: number;
+    let aiAnimationFrame: number;
+    let userAudioContext: AudioContext | null = null;
+    let userAnalyser: AnalyserNode | null = null;
+    let userMicrophone: MediaStreamAudioSourceNode | null = null;
+    let userDataArray: Uint8Array | null = null;
+
+    // User input visualization (pulse effects)
+    const startUserAudioVisualization = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
         });
-      }
-    } catch (error) {
-      console.error("Text-to-speech error:", error);
-      setIsSpeaking(false);
-      toast({
-        title: "Voice Error",
-        description: "Failed to generate speech",
-        variant: "destructive",
-      });
-    }
-  };
+        userAudioContext = new AudioContext();
+        userMicrophone = userAudioContext.createMediaStreamSource(stream);
+        userAnalyser = userAudioContext.createAnalyser();
 
-  const stopSpeaking = () => {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+        userAnalyser.fftSize = 256;
+        userAnalyser.smoothingTimeConstant = 0.3;
+        userDataArray = new Uint8Array(userAnalyser.frequencyBinCount);
+
+        userMicrophone.connect(userAnalyser);
+
+        const updateUserPulse = () => {
+          if (!userAnalyser || !userDataArray || !gif) return;
+
+          userAnalyser.getByteFrequencyData(userDataArray);
+
+          // Calculate average audio level for user input
+          let sum = 0;
+          for (let i = 0; i < userDataArray.length; i++) {
+            sum += userDataArray[i];
+          }
+          const average = sum / userDataArray.length;
+          const normalizedLevel = Math.min(average / 128, 1); // Normalize to 0-1
+
+          // Control pulse intensity with CSS custom properties
+          const pulseIntensity = Math.max(normalizedLevel * 2, 0.2); // Minimum pulse
+          const pulseSpeed = Math.max(2 - normalizedLevel * 1.5, 0.3); // Faster pulse with more audio
+
+          gif.style.setProperty(
+            "--user-pulse-intensity",
+            pulseIntensity.toString()
+          );
+          gif.style.setProperty("--user-pulse-speed", `${pulseSpeed}s`);
+
+          // Update audio level rings for user input
+          if (ring1 && ring2 && ring3) {
+            const opacity1 = Math.min(normalizedLevel * 2, 1);
+            const opacity2 = Math.min((normalizedLevel - 0.2) * 2.5, 1);
+            const opacity3 = Math.min((normalizedLevel - 0.4) * 3, 1);
+
+            ring1.style.borderColor = `rgba(34, 197, 94, ${opacity1})`; // Green for user input
+            ring2.style.borderColor = `rgba(59, 130, 246, ${Math.max(
+              opacity2,
+              0
+            )})`;
+            ring3.style.borderColor = `rgba(6, 182, 212, ${Math.max(
+              opacity3,
+              0
+            )})`;
+          }
+
+          userAnimationFrame = requestAnimationFrame(updateUserPulse);
+        };
+
+        updateUserPulse();
+      } catch (error) {
+        console.error(
+          "Error accessing microphone for user input visualization:",
+          error
+        );
+      }
+    };
+
+    const stopUserAudioVisualization = () => {
+      if (userAnimationFrame) {
+        cancelAnimationFrame(userAnimationFrame);
+      }
+      if (userMicrophone) {
+        userMicrophone.disconnect();
+      }
+      if (userAudioContext) {
+        userAudioContext.close();
+      }
+
+      // Reset user pulse effects
+      gif.style.removeProperty("--user-pulse-intensity");
+      gif.style.removeProperty("--user-pulse-speed");
+
+      // Reset rings
+      if (ring1 && ring2 && ring3) {
+        ring1.style.borderColor = "rgba(34, 197, 94, 0)";
+        ring2.style.borderColor = "rgba(59, 130, 246, 0)";
+        ring3.style.borderColor = "rgba(6, 182, 212, 0)";
+      }
+    };
+
+    // AI response visualization (speed effects)
+    const monitorAIAudio = () => {
+      // Check if AI is speaking and adjust animation speed accordingly
+      const updateAISpeed = () => {
+        // Remove all existing speed classes
+        gif.classList.remove(
+          "ai-assistant-gif-idle",
+          "ai-assistant-gif-slow",
+          "ai-assistant-gif-normal",
+          "ai-assistant-gif-fast",
+          "ai-assistant-gif-intense",
+          "ai-assistant-gif-speaking"
+        );
+
+        if (voiceAssistant.isSpeaking()) {
+          // AI is speaking - use speaking animation
+          gif.classList.add("ai-assistant-gif-speaking");
+
+          // Add orange/red rings for AI output
+          if (ring1 && ring2 && ring3) {
+            ring1.style.borderColor = "rgba(251, 146, 60, 0.8)"; // Orange for AI output
+            ring2.style.borderColor = "rgba(239, 68, 68, 0.6)"; // Red for AI output
+            ring3.style.borderColor = "rgba(168, 85, 247, 0.4)"; // Purple for AI output
+          }
+        } else if (isProcessing) {
+          // AI is processing - use normal speed
+          gif.classList.add("ai-assistant-gif-normal");
+        } else if (speechRecognition.isListening) {
+          // User can speak - use slow baseline
+          gif.classList.add("ai-assistant-gif-slow");
+        } else {
+          // Completely idle - use idle animation
+          gif.classList.add("ai-assistant-gif-idle");
+        }
+
+        aiAnimationFrame = requestAnimationFrame(updateAISpeed);
+      };
+
+      updateAISpeed();
+    };
+
+    const stopAIVisualization = () => {
+      if (aiAnimationFrame) {
+        cancelAnimationFrame(aiAnimationFrame);
+      }
+
+      // Reset to idle state
+      const gif = document.getElementById("ai-assistant-gif");
+      if (gif) {
+        gif.classList.remove(
+          "ai-assistant-gif-slow",
+          "ai-assistant-gif-normal",
+          "ai-assistant-gif-fast",
+          "ai-assistant-gif-intense",
+          "ai-assistant-gif-speaking"
+        );
+        gif.classList.add("ai-assistant-gif-idle");
+      }
+    };
+
+    // Start appropriate visualizations
+    if (speechRecognition.isListening) {
+      startUserAudioVisualization(); // Start user input visualization
+    } else {
+      stopUserAudioVisualization();
     }
-    setIsSpeaking(false);
-  };
+
+    // Always monitor AI state
+    monitorAIAudio();
+
+    return () => {
+      stopUserAudioVisualization();
+      stopAIVisualization();
+    };
+  }, [speechRecognition.isListening, isProcessing, voiceAssistant]);
 
   return (
     <div className="space-y-6">
-      {/* Voice Visualizer */}
-      <div className="flex justify-center">
-        <motion.div
-          className={`voice-visualizer ${isListening ? "active" : ""}`}
-          animate={{
-            scale: isListening ? [1, 1.1, 1] : 1,
-            opacity: isProcessing ? 0.5 : 1,
-          }}
-          transition={{
-            duration: 1,
-            repeat: isListening ? Infinity : 0,
-            ease: "easeInOut",
-          }}
-        >
-          {isListening ? (
-            <Mic className="h-12 w-12 text-white" />
-          ) : (
-            <MicOff className="h-12 w-12 text-white" />
-          )}
-        </motion.div>
-      </div>
-
-      {/* Voice Controls */}
-      <div className="flex justify-center gap-4">
-        <Button
-          onClick={isListening ? stopListening : startListening}
-          variant={isListening ? "destructive" : "default"}
-          size="lg"
-          disabled={isProcessing}
-        >
-          {isListening ? (
-            <MicOff className="h-5 w-5 mr-2" />
-          ) : (
-            <Mic className="h-5 w-5 mr-2" />
-          )}
-          {isListening ? "Stop Listening" : "Start Listening"}
-        </Button>
-
-        <Button
-          onClick={isSpeaking ? stopSpeaking : undefined}
-          variant={isSpeaking ? "destructive" : "secondary"}
-          size="lg"
-          disabled={!isSpeaking}
-        >
-          {isSpeaking ? (
-            <VolumeX className="h-5 w-5 mr-2" />
-          ) : (
-            <Volume2 className="h-5 w-5 mr-2" />
-          )}
-          {isSpeaking ? "Stop Speaking" : "Speaking"}
-        </Button>
-      </div>
-
-      {/* Current Transcript */}
-      {currentTranscript && (
-        <Card className="bg-secondary/50">
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Listening...</p>
-            <p className="text-lg">{currentTranscript}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Status */}
-      <div className="text-center">
-        {isProcessing && (
-          <div className="flex items-center justify-center gap-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-            <span className="text-sm text-muted-foreground">Processing...</span>
-          </div>
-        )}
-      </div>
-
-      {/* Conversation History */}
-      <div className="space-y-4 max-h-96 overflow-y-auto">
-        {messages.map((message) => (
-          <motion.div
-            key={message.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className={`flex ${
-              message.isUser ? "justify-end" : "justify-start"
-            }`}
-          >
-            <Card
-              className={`max-w-md ${
-                message.isUser
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary"
-              }`}
-            >
-              <CardContent className="p-3">
-                <div className="flex items-start gap-2">
-                  {message.isUser ? (
-                    <div className="h-6 w-6 rounded-full bg-white/20 flex items-center justify-center">
-                      <span className="text-xs font-semibold">U</span>
-                    </div>
-                  ) : (
-                    <div className="h-6 w-6 rounded-full bg-purple-500 flex items-center justify-center">
-                      <span className="text-xs font-semibold text-white">
-                        AI
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-sm">{message.text}</p>
-                    <p className="text-xs opacity-70 mt-1">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex flex-wrap gap-2 justify-center">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => processUserInput("read latest Discord messages")}
-          disabled={isProcessing}
-        >
-          <MessageSquare className="h-4 w-4 mr-2" />
-          Read Messages
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => processUserInput("send Discord summary")}
-          disabled={isProcessing}
-        >
-          <Send className="h-4 w-4 mr-2" />
-          Send Summary
-        </Button>
-      </div>
-
-      {/* Voice Settings */}
-      <Card className="bg-secondary/30">
+      {/* Status Information Bar */}
+      <Card>
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Settings className="h-4 w-4" />
-            <h3 className="font-semibold">Voice Settings</h3>
-          </div>
-
-          <div className="space-y-3">
-            {/* Voice Provider Toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Voice Provider</span>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-xs ${
-                    !useElevenLabs ? "text-primary" : "text-muted-foreground"
-                  }`}
-                >
-                  Browser
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center space-x-6">
+              <span className={`font-medium ${getStatusColor()}`}>
+                Status: {speechRecognition.status}
+              </span>
+              {speechRecognition.confidence && (
+                <span className={`font-medium ${getConfidenceColor()}`}>
+                  Confidence: {speechRecognition.confidence}
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setUseElevenLabs(!useElevenLabs)}
-                  className="h-8 px-2"
-                >
-                  {useElevenLabs ? "Switch to Browser" : "Switch to ElevenLabs"}
-                </Button>
-                <span
-                  className={`text-xs ${
-                    useElevenLabs ? "text-primary" : "text-muted-foreground"
-                  }`}
-                >
-                  ElevenLabs
-                </span>
-              </div>
-            </div>
-
-            {/* ElevenLabs Voice Selection */}
-            {useElevenLabs && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">AI Voice</span>
-                  <span className="text-xs text-muted-foreground">
-                    {availableVoices.length} voices available
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {availableVoices.map((voice) => (
-                    <Button
-                      key={voice.voice_id}
-                      variant={
-                        selectedVoice === voice.voice_id ? "default" : "outline"
-                      }
-                      size="sm"
-                      onClick={() => setSelectedVoice(voice.voice_id)}
-                      className="text-xs h-8"
-                    >
-                      {voice.name}
-                    </Button>
-                  ))}
-                </div>
-
-                {availableVoices.length === 0 && (
-                  <div className="text-xs text-muted-foreground text-center py-2">
-                    Loading voices...
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Voice Test */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Test Voice</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  speakText("Hello! This is a test of the voice system.")
-                }
-                disabled={isSpeaking}
-                className="h-8 px-3"
-              >
-                {isSpeaking ? "Speaking..." : "Test Voice"}
-              </Button>
-            </div>
-
-            {/* API Key Status */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">API Status</span>
-              <span
-                className={`text-xs px-2 py-1 rounded ${
-                  useElevenLabs
-                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                    : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                }`}
-              >
-                {useElevenLabs ? "ElevenLabs Connected" : "Browser Voice Only"}
+              )}
+              <span className="text-gray-500">
+                {useElevenLabs
+                  ? `Voice: ${selectedVoice}`
+                  : "Voice: Browser Default"}
               </span>
             </div>
+
+            {speechRecognition.isMicrophoneAvailable === false && (
+              <span className="text-red-500 font-medium flex items-center">
+                🎤 Microphone not available
+              </span>
+            )}
+          </div>
+
+          {/* Current Transcript */}
+          {(currentTranscript || speechRecognition.transcript) && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800"
+            >
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                <strong>🎤 Listening:</strong>{" "}
+                {currentTranscript || speechRecognition.transcript}
+              </p>
+            </motion.div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* GIF Waveform Info */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+              🎨 GIF Audio Visualization
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              The AI assistant animation above responds to your voice - watch it
+              pulse and change speed based on your audio levels!
+            </p>
           </div>
         </CardContent>
       </Card>
+
+      {/* Control Panel */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-center space-x-4">
+            {/* Processing Indicator */}
+            {isProcessing && (
+              <div className="flex items-center space-x-2 text-blue-500">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm font-medium">Processing...</span>
+              </div>
+            )}
+
+            {/* Manual Voice Toggle Button */}
+            <Button
+              onClick={toggleListening}
+              variant={
+                speechRecognition.isListening ? "destructive" : "default"
+              }
+              size="sm"
+              className="shadow-sm"
+              disabled={!speechRecognition.browserSupportsSpeechRecognition}
+            >
+              {speechRecognition.isListening
+                ? "Stop Listening"
+                : "Start Listening"}
+            </Button>
+
+            {/* Mute Button */}
+            <Button
+              onClick={toggleMute}
+              variant={isMuted ? "destructive" : "outline"}
+              size="sm"
+              className="shadow-sm"
+            >
+              {isMuted ? (
+                <VolumeX className="h-4 w-4" />
+              ) : (
+                <Volume2 className="h-4 w-4" />
+              )}
+              <span className="ml-2 text-xs">
+                {isMuted ? "Unmute" : "Mute"}
+              </span>
+            </Button>
+
+            {/* Voice Toggle */}
+            <Button
+              onClick={toggleVoiceEnabled}
+              variant={isVoiceEnabled ? "default" : "outline"}
+              size="sm"
+              className="shadow-sm"
+            >
+              <Settings className="h-4 w-4" />
+              <span className="ml-2 text-xs">Settings</span>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Messages */}
+      <Card className="flex-1">
+        <CardContent className="p-0">
+          <div className="h-96 overflow-y-auto p-4 space-y-4">
+            <AnimatePresence>
+              {messages.map((message) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`flex ${
+                    message.isUser ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-xs lg:max-w-md px-4 py-3 rounded-xl shadow-sm ${
+                      message.isUser
+                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white"
+                        : "bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 text-gray-800 dark:text-gray-200"
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed">{message.text}</p>
+                    <p className="text-xs mt-2 opacity-70">
+                      {message.timestamp.toLocaleTimeString()}
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Footer */}
+      <div className="text-center text-xs text-gray-500 space-y-1">
+        <div>
+          {speechRecognition.browserSupportsSpeechRecognition
+            ? "🎤 Voice recognition enabled • 🔊 ElevenLabs TTS ready • 🎨 GIF waveform active"
+            : "❌ Voice recognition not supported in this browser"}
+        </div>
+        <div className="text-blue-600 dark:text-blue-400 font-medium">
+          Click the AI assistant animation above to activate voice controls
+        </div>
+      </div>
     </div>
   );
 }

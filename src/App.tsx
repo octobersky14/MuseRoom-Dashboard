@@ -4,12 +4,28 @@ import { DiscordMessages } from "./components/DiscordMessages";
 import { Toaster } from "./components/ui/toaster";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { Mic, MessageSquare, Settings } from "lucide-react";
+import { Button } from "./components/ui/button";
+import { Mic, MessageSquare, Settings, Volume2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { SplashCursor } from "./components/ui/splash-cursor";
+import axios from "axios";
+import { useToast } from "./components/ui/use-toast";
+
+interface ElevenLabsVoice {
+  voice_id: string;
+  name: string;
+  preview_url?: string;
+}
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
+  const [selectedVoice, setSelectedVoice] = useState("JBFqnCBsd6RMkjVDRZzb"); // Default ElevenLabs voice (George)
+  const [useElevenLabs, setUseElevenLabs] = useState(true);
+  const [availableVoices, setAvailableVoices] = useState<ElevenLabsVoice[]>([]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const { toast } = useToast();
+  const elevenLabsApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
 
   useEffect(() => {
     if (darkMode) {
@@ -19,20 +35,115 @@ function App() {
     }
   }, [darkMode]);
 
+  // Initialize ElevenLabs
+  useEffect(() => {
+    if (elevenLabsApiKey) {
+      loadElevenLabsVoices();
+      setUseElevenLabs(true);
+    } else {
+      console.info(
+        "No ElevenLabs API key found, using Web Speech API fallback"
+      );
+      setUseElevenLabs(false);
+    }
+  }, [elevenLabsApiKey]);
+
+  const loadElevenLabsVoices = async () => {
+    if (!elevenLabsApiKey) return;
+
+    try {
+      const response = await axios.get("https://api.elevenlabs.io/v1/voices", {
+        headers: {
+          "xi-api-key": elevenLabsApiKey,
+        },
+      });
+      if (response.data && response.data.voices) {
+        setAvailableVoices(response.data.voices.slice(0, 10)); // Limit to first 10 voices
+      }
+    } catch (error) {
+      console.warn("Failed to load ElevenLabs voices:", error);
+      setUseElevenLabs(false);
+    }
+  };
+
+  const testVoice = async () => {
+    if (!elevenLabsApiKey) {
+      toast({
+        title: "ElevenLabs API Key Required",
+        description:
+          "Please add your ElevenLabs API key to use voice synthesis",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSpeaking(true);
+      const response = await axios.post(
+        `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
+        {
+          text: "Hello! This is a test of the voice system.",
+          model_id: "eleven_multilingual_v2",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
+          },
+        },
+        {
+          headers: {
+            "xi-api-key": elevenLabsApiKey,
+            "Content-Type": "application/json",
+          },
+          responseType: "arraybuffer",
+        }
+      );
+
+      if (response.data) {
+        const audioContext = new AudioContext();
+        const audioBuffer = await audioContext.decodeAudioData(response.data);
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+
+        source.onended = () => {
+          setIsSpeaking(false);
+        };
+
+        source.start(0);
+
+        toast({
+          title: "Voice Test",
+          description: "Testing ElevenLabs voice synthesis",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error("Voice test error:", error);
+      setIsSpeaking(false);
+      toast({
+        title: "Voice Test Failed",
+        description: "Failed to test voice. Please check your API key.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
       {/* Splash Cursor Background */}
-      <div className="fixed inset-0 z-0 opacity-30">
+      <div className="fixed inset-0 z-0 opacity-40">
         <SplashCursor
           TRANSPARENT={true}
           BACK_COLOR={{ r: 0.01, g: 0.01, b: 0.03 }}
-          SPLAT_RADIUS={0.12}
-          SPLAT_FORCE={2500}
-          CURL={8}
-          DENSITY_DISSIPATION={1.2}
-          VELOCITY_DISSIPATION={0.8}
-          COLOR_UPDATE_SPEED={2}
-          SHADING={false}
+          SPLAT_RADIUS={0.15}
+          SPLAT_FORCE={3500}
+          CURL={12}
+          DENSITY_DISSIPATION={0.9}
+          VELOCITY_DISSIPATION={0.6}
+          COLOR_UPDATE_SPEED={8}
+          SHADING={true}
         />
       </div>
 
@@ -64,7 +175,7 @@ function App() {
               animate={{ opacity: 1 }}
               transition={{ duration: 0.8, delay: 0.3 }}
             >
-              Talk to your AI assistant to manage Discord messages
+              :)
             </motion.p>
           </motion.div>
 
@@ -76,20 +187,76 @@ function App() {
             transition={{ duration: 1, ease: "easeOut" }}
           >
             <motion.div
-              className="relative"
-              whileHover={{ scale: 1.02 }}
+              className="relative cursor-pointer"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               transition={{ duration: 0.4, ease: "easeOut" }}
+              onClick={() => {
+                // Trigger voice listening from the VoiceAgent component
+                if ((window as any).toggleVoiceListening) {
+                  (window as any).toggleVoiceListening();
+                }
+              }}
             >
-              <div className="ai-assistant-container p-6">
+              <div className="ai-assistant-container p-6 relative">
                 <motion.img
+                  id="ai-assistant-gif"
                   src="/ai-assistant-animation.gif"
-                  alt="AI Assistant Animation"
-                  className="w-96 h-auto object-contain rounded-2xl shadow-2xl ai-assistant-glow max-w-full"
+                  alt="AI Assistant Animation - Click to activate voice"
+                  className="w-96 h-auto object-contain rounded-2xl shadow-2xl ai-assistant-glow max-w-full transition-all duration-300 hover:shadow-purple-500/25"
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
+                  style={{
+                    filter: "brightness(1) contrast(1) saturate(1)",
+                    transition: "filter 0.1s ease-out",
+                  }}
                 />
+
+                {/* Click indicator overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-purple-600/5 to-transparent rounded-2xl pointer-events-none" />
+
+                {/* Voice status indicator */}
+                <motion.div
+                  className="absolute top-4 right-4 w-4 h-4 rounded-full bg-green-500 shadow-lg"
+                  animate={{
+                    scale: [1, 1.2, 1],
+                    opacity: [1, 0.7, 1],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                  style={{ display: "none" }} // Will be controlled by voice state
+                  id="voice-listening-indicator"
+                />
+
+                {/* Audio level indicator rings */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  id="audio-level-rings"
+                >
+                  <div
+                    className="absolute inset-0 rounded-2xl border-2 border-purple-400/0 transition-all duration-100"
+                    id="audio-ring-1"
+                  ></div>
+                  <div
+                    className="absolute inset-2 rounded-2xl border-2 border-blue-400/0 transition-all duration-150"
+                    id="audio-ring-2"
+                  ></div>
+                  <div
+                    className="absolute inset-4 rounded-2xl border-2 border-cyan-400/0 transition-all duration-200"
+                    id="audio-ring-3"
+                  ></div>
+                </div>
+
+                {/* Click instruction */}
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-center">
+                  <p className="text-xs text-muted-foreground/70 font-medium bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50">
+                    Click to activate voice assistant
+                  </p>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -101,8 +268,11 @@ function App() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.5 }}
           >
-            <p className="text-sm text-muted-foreground/70 font-medium">
-              ✨ AI Assistant is ready to help you
+            <p
+              className="text-sm text-muted-foreground/70 font-medium"
+              id="voice-status-text"
+            >
+              Voice assistant ready - Click the animation above to start
             </p>
           </motion.div>
 
@@ -144,7 +314,12 @@ function App() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <VoiceAgent />
+                    <VoiceAgent
+                      selectedVoice={selectedVoice}
+                      useElevenLabs={useElevenLabs}
+                      availableVoices={availableVoices}
+                      elevenLabsApiKey={elevenLabsApiKey}
+                    />
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -193,26 +368,129 @@ function App() {
                         </button>
                       </div>
 
-                      <div className="p-4 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
-                        <h3 className="font-semibold text-foreground mb-2">
-                          ✨ Enhanced Features
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                            Glass-morphism UI
+                      {/* Voice Settings */}
+                      <div className="p-4 rounded-lg bg-secondary/50 backdrop-blur-sm border border-border/50">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                            <Volume2 className="h-5 w-5 text-white" />
                           </div>
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
-                            Fluid animations
+                          <div>
+                            <p className="font-medium text-foreground">
+                              Voice Settings
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Configure AI voice synthesis
+                            </p>
                           </div>
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                            Voice recognition
+                        </div>
+
+                        <div className="space-y-4">
+                          {/* Voice Provider Toggle */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              Voice Provider
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-xs ${
+                                  !useElevenLabs
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                Browser
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setUseElevenLabs(!useElevenLabs)}
+                                className="h-8 px-2"
+                              >
+                                {useElevenLabs
+                                  ? "Switch to Browser"
+                                  : "Switch to ElevenLabs"}
+                              </Button>
+                              <span
+                                className={`text-xs ${
+                                  useElevenLabs
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                ElevenLabs
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
-                            AI-powered responses
+
+                          {/* ElevenLabs Voice Selection */}
+                          {useElevenLabs && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">
+                                  AI Voice
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {availableVoices.length} voices available
+                                </span>
+                              </div>
+
+                              {availableVoices.length > 0 ? (
+                                <select
+                                  value={selectedVoice}
+                                  onChange={(e) =>
+                                    setSelectedVoice(e.target.value)
+                                  }
+                                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+                                >
+                                  {availableVoices.map((voice) => (
+                                    <option
+                                      key={voice.voice_id}
+                                      value={voice.voice_id}
+                                    >
+                                      {voice.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="text-xs text-muted-foreground text-center py-2">
+                                  Loading voices...
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Voice Test */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              Test Voice
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={testVoice}
+                              disabled={isSpeaking}
+                              className="h-8 px-3"
+                            >
+                              {isSpeaking ? "Speaking..." : "Test Voice"}
+                            </Button>
+                          </div>
+
+                          {/* API Key Status */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              API Status
+                            </span>
+                            <span
+                              className={`text-xs px-2 py-1 rounded ${
+                                elevenLabsApiKey
+                                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                  : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                              }`}
+                            >
+                              {elevenLabsApiKey
+                                ? "ElevenLabs Connected"
+                                : "API Key Required"}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -225,6 +503,129 @@ function App() {
         </div>
       </div>
       <Toaster />
+      <style>{`
+        /* CSS for controlling GIF animation speed based on audio */
+        .ai-assistant-gif-idle {
+          animation: gif-pulse-idle 4s ease-in-out infinite;
+        }
+        
+        .ai-assistant-gif-slow {
+          animation: gif-pulse-slow 1.5s ease-in-out infinite;
+        }
+        
+        .ai-assistant-gif-normal {
+          animation: gif-pulse-normal 0.8s ease-in-out infinite;
+        }
+        
+        .ai-assistant-gif-fast {
+          animation: gif-pulse-fast 0.3s ease-in-out infinite;
+        }
+        
+        .ai-assistant-gif-intense {
+          animation: gif-pulse-intense 0.15s ease-in-out infinite;
+        }
+        
+        .ai-assistant-gif-speaking {
+          animation: gif-pulse-speaking 0.6s ease-in-out infinite;
+        }
+        
+        /* User input pulse overlay */
+        #ai-assistant-gif {
+          position: relative;
+        }
+        
+        #ai-assistant-gif::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          border-radius: inherit;
+          background: radial-gradient(circle, rgba(34, 197, 94, 0.1) 0%, transparent 60%);
+          opacity: var(--user-pulse-intensity, 0);
+          animation: user-pulse var(--user-pulse-speed, 2s) ease-in-out infinite;
+          pointer-events: none;
+          z-index: 1;
+        }
+        
+        @keyframes user-pulse {
+          0%, 100% {
+            transform: scale(1);
+            opacity: var(--user-pulse-intensity, 0);
+          }
+          50% {
+            transform: scale(1.1);
+            opacity: calc(var(--user-pulse-intensity, 0) * 0.7);
+          }
+        }
+        
+        @keyframes gif-pulse-idle {
+          0%, 100% { 
+            filter: brightness(0.9) contrast(0.9) saturate(0.8) hue-rotate(0deg);
+            transform: scale(1);
+          }
+          50% { 
+            filter: brightness(1) contrast(1) saturate(1) hue-rotate(2deg);
+            transform: scale(1.01);
+          }
+        }
+        
+        @keyframes gif-pulse-slow {
+          0%, 100% { 
+            filter: brightness(1) contrast(1) saturate(1) hue-rotate(0deg);
+            transform: scale(1);
+          }
+          50% { 
+            filter: brightness(1.1) contrast(1.1) saturate(1.2) hue-rotate(5deg);
+            transform: scale(1.03);
+          }
+        }
+        
+        @keyframes gif-pulse-normal {
+          0%, 100% { 
+            filter: brightness(1) contrast(1) saturate(1) hue-rotate(0deg);
+            transform: scale(1);
+          }
+          50% { 
+            filter: brightness(1.2) contrast(1.2) saturate(1.4) hue-rotate(10deg);
+            transform: scale(1.06);
+          }
+        }
+        
+        @keyframes gif-pulse-fast {
+          0%, 100% { 
+            filter: brightness(1) contrast(1.1) saturate(1.2) hue-rotate(0deg);
+            transform: scale(1);
+          }
+          50% { 
+            filter: brightness(1.4) contrast(1.4) saturate(1.6) hue-rotate(20deg);
+            transform: scale(1.1);
+          }
+        }
+        
+        @keyframes gif-pulse-intense {
+          0%, 100% { 
+            filter: brightness(1.1) contrast(1.2) saturate(1.4) hue-rotate(0deg);
+            transform: scale(1.02);
+          }
+          50% { 
+            filter: brightness(1.6) contrast(1.6) saturate(1.8) hue-rotate(30deg);
+            transform: scale(1.15);
+          }
+        }
+        
+        @keyframes gif-pulse-speaking {
+          0%, 100% { 
+            filter: brightness(1.1) contrast(1.1) saturate(1.3) hue-rotate(45deg);
+            transform: scale(1);
+          }
+          50% { 
+            filter: brightness(1.3) contrast(1.3) saturate(1.5) hue-rotate(60deg);
+            transform: scale(1.07);
+          }
+        }
+      `}</style>
     </div>
   );
 }
