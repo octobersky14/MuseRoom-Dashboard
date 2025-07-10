@@ -30,6 +30,8 @@ interface VoiceAgentProps {
   elevenLabsApiKey: string;
   initialPrompt?: string | null;
   onPromptHandled?: () => void;
+  showChat?: boolean;
+  setShowChat?: (show: boolean) => void;
 }
 
 export function VoiceAgent({
@@ -39,6 +41,8 @@ export function VoiceAgent({
   elevenLabsApiKey,
   initialPrompt,
   onPromptHandled,
+  showChat = true,
+  setShowChat,
 }: VoiceAgentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState("");
@@ -46,9 +50,6 @@ export function VoiceAgent({
   const [isMuted, setIsMuted] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [textInput, setTextInput] = useState("");
-
-  // Track if initialPrompt has been handled
-  const [handledInitialPrompt, setHandledInitialPrompt] = useState(false);
 
   const { toast } = useToast();
 
@@ -117,35 +118,58 @@ export function VoiceAgent({
     return `${timeGreeting}! Welcome to MuseRoom Dashboard. Today is ${dayName}, ${monthDay}. I'm here to help you with ${randomGoal}. Click the animation above to start voice chat, or try saying "Hello" to begin our conversation.`;
   };
 
-  // Initialize with welcome message and speak it
+  // Only run this effect on mount and when initialPrompt changes
   useEffect(() => {
-    if (initialPrompt) return;
-    const welcomeText = generateWelcomeGreeting();
-    const welcomeMessage: Message = {
-      id: "welcome",
-      text: welcomeText,
-      timestamp: new Date(),
-      isUser: false,
-    };
-    setMessages([welcomeMessage]);
-
-    // Speak the welcome message after a short delay to ensure everything is loaded
-    const speakWelcome = async () => {
-      // Wait for component to fully mount and voice system to initialize
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
-
-      if (!isMuted && voiceAssistant && voiceAssistant.speak) {
-        console.log("Speaking welcome message:", welcomeText);
-        try {
-          await voiceAssistant.speak(welcomeText);
-        } catch (error) {
-          console.error("Error speaking welcome message:", error);
+    if (initialPrompt) {
+      // If there is an initial prompt, add only the user message and process it
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: initialPrompt,
+        timestamp: new Date(),
+        isUser: true,
+      };
+      setMessages([userMessage]);
+      setCurrentTranscript("");
+      setIsProcessing(true);
+      processCommand(initialPrompt).then((response) => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: response,
+          timestamp: new Date(),
+          isUser: false,
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+        setIsProcessing(false);
+        if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+          voiceAssistant.speak(response);
         }
-      }
-    };
-
-    speakWelcome();
-  }, [initialPrompt]); // Only run once on mount
+        if (onPromptHandled) onPromptHandled();
+      });
+    } else {
+      // If there is no initial prompt, show the greeting only
+      const welcomeText = generateWelcomeGreeting();
+      const welcomeMessage: Message = {
+        id: "welcome",
+        text: welcomeText,
+        timestamp: new Date(),
+        isUser: false,
+      };
+      setMessages([welcomeMessage]);
+      // Speak the welcome message after a short delay to ensure everything is loaded
+      const speakWelcome = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
+        if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+          try {
+            await voiceAssistant.speak(welcomeText);
+          } catch (error) {
+            console.error("Error speaking welcome message:", error);
+          }
+        }
+      };
+      speakWelcome();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt]);
 
   // Handle speech recognition errors
   useEffect(() => {
@@ -228,17 +252,6 @@ export function VoiceAgent({
     },
     [isMuted, voiceAssistant, toast]
   );
-
-  // Process initialPrompt if provided (must be after processUserInput is defined)
-  useEffect(() => {
-    if (initialPrompt && !handledInitialPrompt) {
-      setHandledInitialPrompt(true);
-      setMessages([]); // Clear previous messages so the prompt is first
-      processUserInput(initialPrompt).then(() => {
-        if (onPromptHandled) onPromptHandled();
-      });
-    }
-  }, [initialPrompt, handledInitialPrompt, onPromptHandled, processUserInput]);
 
   const processCommand = async (command: string): Promise<string> => {
     console.log("Processing command:", command);
@@ -425,139 +438,144 @@ export function VoiceAgent({
 
   return (
     <>
-      {/* Status Header */}
-      {(speechRecognition.isListening || isProcessing) && (
-        <div className="mb-6 flex items-center justify-center">
+      {/* Only render chat UI if showChat is true */}
+      {showChat && (
+        <div className="card-modern bg-gradient-to-br from-purple-900/30 via-[#232136]/80 to-pink-900/30 border border-purple-500/40 rounded-2xl shadow-2xl backdrop-blur-xl p-0 w-full max-w-2xl mx-auto">
+          {/* Status Header */}
+          {(speechRecognition.isListening || isProcessing) && (
+            <div className="mb-6 flex items-center justify-center">
+              <div
+                className="flex items-center space-x-3 bg-gray-800/60 backdrop-blur-sm rounded-full px-4 py-2 border border-gray-600/40"
+                role="status"
+                aria-live="polite"
+                aria-label={
+                  speechRecognition.isListening
+                    ? "Voice assistant is listening"
+                    : "Voice assistant is processing"
+                }
+              >
+                {speechRecognition.isListening && (
+                  <>
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
+                    <span className="text-green-400 text-sm">Listening...</span>
+                  </>
+                )}
+                {isProcessing && (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                    <span className="text-blue-400 text-sm">Processing...</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Messages Container */}
           <div
-            className="flex items-center space-x-3 bg-gray-800/60 backdrop-blur-sm rounded-full px-4 py-2 border border-gray-600/40"
-            role="status"
+            className="h-80 overflow-y-auto p-6 space-y-4 custom-scrollbar mb-6"
+            role="log"
+            aria-label="Conversation messages"
             aria-live="polite"
-            aria-label={
-              speechRecognition.isListening
-                ? "Voice assistant is listening"
-                : "Voice assistant is processing"
-            }
           >
-            {speechRecognition.isListening && (
-              <>
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
-                <span className="text-green-400 text-sm">Listening...</span>
-              </>
-            )}
+            <AnimatePresence>
+              {messages.map((message) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className={`flex ${
+                    message.isUser ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-xs lg:max-w-md px-5 py-3 rounded-2xl shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 ${
+                      message.isUser
+                        ? "bg-gradient-to-br from-blue-600 to-purple-700 text-white border border-blue-400/50"
+                        : "bg-gradient-to-br from-gray-700/95 to-gray-800/95 text-gray-100 border border-gray-600/50"
+                    }`}
+                  >
+                    {!message.isUser && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                        <span className="text-xs font-medium text-purple-400">
+                          Assistant
+                        </span>
+                      </div>
+                    )}
+                    <p className="text-sm leading-relaxed">{message.text}</p>
+                    <div className="flex justify-between items-center mt-3">
+                      <p className="text-xs opacity-60">
+                        {message.timestamp.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                      {message.isUser && (
+                        <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {/* Typing indicator when processing */}
             {isProcessing && (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                <span className="text-blue-400 text-sm">Processing...</span>
-              </>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-start"
+              >
+                <div className="bg-gradient-to-br from-gray-700/95 to-gray-800/95 border border-gray-600/50 rounded-2xl px-5 py-3 backdrop-blur-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                      <div
+                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.1s" }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
+                    </div>
+                    <span className="text-xs text-purple-400">
+                      Assistant is thinking...
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
             )}
+          </div>
+
+          {/* Text Input Area */}
+          <div className="bg-gray-900/60 backdrop-blur-sm rounded-xl border border-gray-700/50 p-4">
+            <form onSubmit={handleTextSubmit} className="space-y-3">
+              <div className="flex items-center space-x-3">
+                <input
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  placeholder="Type a message or click the animation above for voice :)"
+                  className="flex-1 bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400/50 focus:bg-gray-800 backdrop-blur-sm transition-all duration-200"
+                  disabled={isProcessing}
+                  aria-label="Type your message"
+                />
+                <button
+                  type="submit"
+                  disabled={!textInput.trim() || isProcessing}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-xl hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105"
+                  aria-label="Send message"
+                >
+                  Send
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
-
-      {/* Messages Container */}
-      <div
-        className="h-80 overflow-y-auto p-6 space-y-4 custom-scrollbar mb-6"
-        role="log"
-        aria-label="Conversation messages"
-        aria-live="polite"
-      >
-        <AnimatePresence>
-          {messages.map((message) => (
-            <motion.div
-              key={message.id}
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              className={`flex ${
-                message.isUser ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-xs lg:max-w-md px-5 py-3 rounded-2xl shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 ${
-                  message.isUser
-                    ? "bg-gradient-to-br from-blue-600 to-purple-700 text-white border border-blue-400/50"
-                    : "bg-gradient-to-br from-gray-700/95 to-gray-800/95 text-gray-100 border border-gray-600/50"
-                }`}
-              >
-                {!message.isUser && (
-                  <div className="flex items-center space-x-2 mb-2">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                    <span className="text-xs font-medium text-purple-400">
-                      Assistant
-                    </span>
-                  </div>
-                )}
-                <p className="text-sm leading-relaxed">{message.text}</p>
-                <div className="flex justify-between items-center mt-3">
-                  <p className="text-xs opacity-60">
-                    {message.timestamp.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                  {message.isUser && (
-                    <div className="w-1 h-1 bg-white/60 rounded-full"></div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {/* Typing indicator when processing */}
-        {isProcessing && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start"
-          >
-            <div className="bg-gradient-to-br from-gray-700/95 to-gray-800/95 border border-gray-600/50 rounded-2xl px-5 py-3 backdrop-blur-sm">
-              <div className="flex items-center space-x-2">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                  <div
-                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  ></div>
-                  <div
-                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  ></div>
-                </div>
-                <span className="text-xs text-purple-400">
-                  Assistant is thinking...
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Text Input Area */}
-      <div className="bg-gray-900/60 backdrop-blur-sm rounded-xl border border-gray-700/50 p-4">
-        <form onSubmit={handleTextSubmit} className="space-y-3">
-          <div className="flex items-center space-x-3">
-            <input
-              type="text"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Type a message or click the animation above for voice :)"
-              className="flex-1 bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400/50 focus:bg-gray-800 backdrop-blur-sm transition-all duration-200"
-              disabled={isProcessing}
-              aria-label="Type your message"
-            />
-            <button
-              type="submit"
-              disabled={!textInput.trim() || isProcessing}
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-xl hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105"
-              aria-label="Send message"
-            >
-              Send
-            </button>
-          </div>
-        </form>
-      </div>
     </>
   );
 }

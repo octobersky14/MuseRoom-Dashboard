@@ -68,6 +68,18 @@ function App() {
     }
   }, [elevenLabsApiKey]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const speakWelcome = () => {
+        if ((window as any).speakWelcome) {
+          (window as any).speakWelcome();
+        }
+      };
+      // Wait a short moment to ensure VoiceAgent sets the function
+      setTimeout(speakWelcome, 1000);
+    }
+  }, []);
+
   const loadElevenLabsVoices = async () => {
     if (!elevenLabsApiKey) return;
 
@@ -259,16 +271,27 @@ function App() {
             </motion.div>
 
             {/* AI Prompt Button/Box under the logo */}
-            {!showChat && (
-              <div className="flex justify-center mb-8">
-                <div className="w-full max-w-xl">
+            <div className="flex justify-center mb-8">
+              <div className="w-full max-w-xl">
+                {!showChat ? (
                   <PromptInputBox
                     onSend={(msg) => handlePromptSend(msg)}
                     placeholder="Ask MuseRoom anything..."
                   />
-                </div>
+                ) : (
+                  <VoiceAgent
+                    selectedVoice={selectedVoice}
+                    useElevenLabs={useElevenLabs}
+                    availableVoices={availableVoices}
+                    elevenLabsApiKey={elevenLabsApiKey}
+                    initialPrompt={initialPrompt}
+                    onPromptHandled={() => setInitialPrompt(null)}
+                    showChat={showChat}
+                    setShowChat={setShowChat}
+                  />
+                )}
               </div>
-            )}
+            </div>
 
             {/* AI Status Text */}
             <motion.div
@@ -283,238 +306,7 @@ function App() {
               ></p>
             </motion.div>
 
-            {/* Chat/VoiceAgent - only show after prompt or logo click */}
-            {showChat && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-              >
-                <Tabs defaultValue="voice" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 card-modern">
-                    <TabsTrigger
-                      value="voice"
-                      className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white transition-all duration-300 hover:bg-secondary/80"
-                    >
-                      <Mic className="h-4 w-4" />
-                      Voice Agent
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="messages"
-                      className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white transition-all duration-300 hover:bg-secondary/80"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      Messages
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="settings"
-                      className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white transition-all duration-300 hover:bg-secondary/80"
-                    >
-                      <Settings className="h-4 w-4" />
-                      Settings
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="voice" className="mt-6">
-                    <Card className="card-modern">
-                      <CardHeader>
-                        <CardTitle className="text-xl font-semibold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                          Voice Interface
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <VoiceAgent
-                          selectedVoice={selectedVoice}
-                          useElevenLabs={useElevenLabs}
-                          availableVoices={availableVoices}
-                          elevenLabsApiKey={elevenLabsApiKey}
-                          initialPrompt={initialPrompt}
-                          onPromptHandled={() => setInitialPrompt(null)}
-                        />
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="messages" className="mt-6">
-                    <Card className="card-modern">
-                      <CardHeader>
-                        <CardTitle className="text-xl font-semibold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                          Discord Messages
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <DiscordMessages />
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="settings" className="mt-6">
-                    <Card className="card-modern">
-                      <CardHeader>
-                        <CardTitle className="text-xl font-semibold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                          Settings
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-6">
-                          <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 backdrop-blur-sm border border-border/50">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                                <span className="text-white font-semibold">
-                                  🌙
-                                </span>
-                              </div>
-                              <div>
-                                <p className="font-medium text-foreground">
-                                  Dark Mode
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Modern dark interface
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => setDarkMode(!darkMode)}
-                              className="btn-primary px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105"
-                            >
-                              {darkMode ? "Switch to Light" : "Switch to Dark"}
-                            </button>
-                          </div>
-
-                          {/* Voice Settings */}
-                          <div className="p-4 rounded-lg bg-secondary/50 backdrop-blur-sm border border-border/50">
-                            <div className="flex items-center gap-3 mb-4">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                                <Volume2 className="h-5 w-5 text-white" />
-                              </div>
-                              <div>
-                                <p className="font-medium text-foreground">
-                                  Voice Settings
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Configure AI voice synthesis
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-4">
-                              {/* Voice Provider Toggle */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">
-                                  Voice Provider
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={`text-xs ${
-                                      !useElevenLabs
-                                        ? "text-primary"
-                                        : "text-muted-foreground"
-                                    }`}
-                                  >
-                                    Browser
-                                  </span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      setUseElevenLabs(!useElevenLabs)
-                                    }
-                                    className="h-8 px-2"
-                                  >
-                                    {useElevenLabs
-                                      ? "Switch to Browser"
-                                      : "Switch to ElevenLabs"}
-                                  </Button>
-                                  <span
-                                    className={`text-xs ${
-                                      useElevenLabs
-                                        ? "text-primary"
-                                        : "text-muted-foreground"
-                                    }`}
-                                  >
-                                    ElevenLabs
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* ElevenLabs Voice Selection */}
-                              {useElevenLabs && (
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium">
-                                      AI Voice
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {availableVoices.length} voices available
-                                    </span>
-                                  </div>
-
-                                  {availableVoices.length > 0 ? (
-                                    <select
-                                      value={selectedVoice}
-                                      onChange={(e) =>
-                                        setSelectedVoice(e.target.value)
-                                      }
-                                      className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
-                                    >
-                                      {availableVoices.map((voice) => (
-                                        <option
-                                          key={voice.voice_id}
-                                          value={voice.voice_id}
-                                        >
-                                          {voice.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <div className="text-xs text-muted-foreground text-center py-2">
-                                      Loading voices...
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Voice Test */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">
-                                  Test Voice
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={testVoice}
-                                  disabled={isSpeaking}
-                                  className="h-8 px-3"
-                                >
-                                  {isSpeaking ? "Speaking..." : "Test Voice"}
-                                </Button>
-                              </div>
-
-                              {/* API Key Status */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">
-                                  API Status
-                                </span>
-                                <span
-                                  className={`text-xs px-2 py-1 rounded ${
-                                    elevenLabsApiKey
-                                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                                      : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                                  }`}
-                                >
-                                  {elevenLabsApiKey
-                                    ? "ElevenLabs Connected"
-                                    : "API Key Required"}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-                </Tabs>
-              </motion.div>
-            )}
+            {/* Chat/VoiceAgent is now unified with the prompt box above */}
           </div>
         </div>
       </div>
