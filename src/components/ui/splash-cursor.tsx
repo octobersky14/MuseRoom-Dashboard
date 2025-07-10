@@ -793,6 +793,8 @@ function SplashCursor({
     let lastUpdateTime = Date.now();
     let colorUpdateTimer = 0.0;
 
+    let animationFrameId: number;
+
     function updateFrame() {
       const dt = calcDeltaTime();
       if (resizeCanvas()) initFramebuffers();
@@ -800,7 +802,7 @@ function SplashCursor({
       applyInputs();
       step(dt);
       render(null);
-      requestAnimationFrame(updateFrame);
+      animationFrameId = requestAnimationFrame(updateFrame);
     }
 
     function calcDeltaTime() {
@@ -1252,7 +1254,7 @@ function SplashCursor({
 
     updateFrame();
 
-    // Cleanup event listeners
+    // Cleanup event listeners and animation frames
     return () => {
       window.removeEventListener("mousedown", handleMouseDown);
       window.removeEventListener("mousemove", handleMouseMove);
@@ -1261,6 +1263,9 @@ function SplashCursor({
       window.removeEventListener("touchend", handleTouchEnd);
       window.removeEventListener("resize", handleResize);
       clearInterval(autoSplatInterval);
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

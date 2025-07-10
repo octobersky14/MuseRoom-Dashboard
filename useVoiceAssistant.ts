@@ -352,15 +352,21 @@ export function useVoiceAssistant({
     if ((window as any).electronVoice) {
       // Use native bridge in Electron
       (window as any).electronVoice.start();
-      const detachResult = (window as any).electronVoice.onResult((text: string) => {
-        log("RECOG_RESULT", text);
-        onTranscript?.(text);
-      });
+      const detachResult = (window as any).electronVoice.onResult(
+        (text: string) => {
+          log("RECOG_RESULT", text);
+          onTranscript?.(text);
+        }
+      );
       const detachErr = (window as any).electronVoice.onError((msg: string) => {
         setVoiceError(msg);
         onError?.(msg);
       });
-      recognitionRef.current = { detachResult, detachErr, isElectronBridge: true } as any;
+      recognitionRef.current = {
+        detachResult,
+        detachErr,
+        isElectronBridge: true,
+      } as any;
     } else {
       // fallback Web Speech (browser)
       const SpeechRecognitionImpl =
@@ -625,16 +631,80 @@ export function useVoiceAssistant({
     });
   };
 
-  // returns a function to speak text via ElevenLabs
+  // Browser TTS fallback when ElevenLabs is not available
+  const speakWithBrowserTTS = (text: string) => {
+    if (!text) return;
+
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    // Configure voice settings
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(
+      (voice) =>
+        voice.name.includes("Alex") ||
+        voice.name.includes("Samantha") ||
+        voice.name.includes("Google") ||
+        voice.lang.startsWith("en")
+    );
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    utterance.volume = 0.8;
+
+    // Track speaking state
+    utterance.onstart = () => {
+      isTtsPlayingRef.current = true;
+      onSpeakingChange?.(true);
+      log("Browser TTS started");
+    };
+
+    utterance.onend = () => {
+      isTtsPlayingRef.current = false;
+      onSpeakingChange?.(false);
+      log("Browser TTS ended");
+
+      // Resume listening if enabled
+      if (!abortAllRef.current && enabledRef.current && !muted) {
+        setTimeout(() => {
+          startSpeechRecognition();
+        }, 500);
+      }
+    };
+
+    utterance.onerror = (event) => {
+      log("Browser TTS error:", event.error);
+      isTtsPlayingRef.current = false;
+      onSpeakingChange?.(false);
+    };
+
+    // Stop listening while speaking
+    stopSpeechRecognition();
+
+    // Speak
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // returns a function to speak text via ElevenLabs or browser TTS fallback
   const speak = async (text: string) => {
     if (!text) return;
+
+    // Use browser TTS fallback if no ElevenLabs API key
     if (!elevenLabsApiKey) {
-      alert("ElevenLabs API key missing");
+      log("Using browser TTS fallback - no ElevenLabs API key");
+      speakWithBrowserTTS(text);
       return;
     }
+
     const ctrl = window.__GLOBAL_TTS_CTRL!;
     ctrl.queue.push({ text, agentId: agentIdRef.current });
-    log("Queued speech", ctrl.queue.length);
+    log("Queued speech for ElevenLabs", ctrl.queue.length);
     playNext();
   };
 
