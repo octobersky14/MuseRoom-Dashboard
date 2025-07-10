@@ -28,6 +28,8 @@ interface VoiceAgentProps {
   useElevenLabs: boolean;
   availableVoices: ElevenLabsVoice[];
   elevenLabsApiKey: string;
+  initialPrompt?: string | null;
+  onPromptHandled?: () => void;
 }
 
 export function VoiceAgent({
@@ -35,6 +37,8 @@ export function VoiceAgent({
   useElevenLabs,
   availableVoices,
   elevenLabsApiKey,
+  initialPrompt,
+  onPromptHandled,
 }: VoiceAgentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState("");
@@ -42,6 +46,9 @@ export function VoiceAgent({
   const [isMuted, setIsMuted] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [textInput, setTextInput] = useState("");
+
+  // Track if initialPrompt has been handled
+  const [handledInitialPrompt, setHandledInitialPrompt] = useState(false);
 
   const { toast } = useToast();
 
@@ -112,6 +119,7 @@ export function VoiceAgent({
 
   // Initialize with welcome message and speak it
   useEffect(() => {
+    if (initialPrompt) return;
     const welcomeText = generateWelcomeGreeting();
     const welcomeMessage: Message = {
       id: "welcome",
@@ -137,7 +145,7 @@ export function VoiceAgent({
     };
 
     speakWelcome();
-  }, []); // Only run once on mount
+  }, [initialPrompt]); // Only run once on mount
 
   // Handle speech recognition errors
   useEffect(() => {
@@ -220,6 +228,17 @@ export function VoiceAgent({
     },
     [isMuted, voiceAssistant, toast]
   );
+
+  // Process initialPrompt if provided (must be after processUserInput is defined)
+  useEffect(() => {
+    if (initialPrompt && !handledInitialPrompt) {
+      setHandledInitialPrompt(true);
+      setMessages([]); // Clear previous messages so the prompt is first
+      processUserInput(initialPrompt).then(() => {
+        if (onPromptHandled) onPromptHandled();
+      });
+    }
+  }, [initialPrompt, handledInitialPrompt, onPromptHandled, processUserInput]);
 
   const processCommand = async (command: string): Promise<string> => {
     console.log("Processing command:", command);
