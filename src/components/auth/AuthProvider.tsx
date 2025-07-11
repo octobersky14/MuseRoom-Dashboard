@@ -27,8 +27,6 @@ interface AuthProviderProps {
   children: React.ReactNode;
 }
 
-const ALLOWED_EMAIL = "christopher_inkum@brown.edu";
-
 export function AuthProvider({ children }: AuthProviderProps) {
   const { user: clerkUser, isLoaded } = useUser();
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
@@ -38,11 +36,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const syncUser = async () => {
       setLoading(true);
-      if (
-        isLoaded &&
-        clerkUser &&
-        clerkUser.primaryEmailAddress?.emailAddress === ALLOWED_EMAIL
-      ) {
+      if (isLoaded && clerkUser) {
         const userId = clerkUser.id;
         const email = clerkUser.primaryEmailAddress.emailAddress;
         const full_name = clerkUser.fullName || null;

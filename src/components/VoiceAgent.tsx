@@ -9,6 +9,7 @@ import { useVoiceAssistant } from "../../useVoiceAssistant";
 import useDirectSpeechRecognition, {
   RecognitionStatus,
 } from "../../useDirectSpeechRecognition";
+import { getGeminiResponse } from "../geminiApi";
 
 interface Message {
   id: string;
@@ -28,13 +29,18 @@ interface VoiceAgentProps {
   useElevenLabs: boolean;
   availableVoices: ElevenLabsVoice[];
   elevenLabsApiKey: string;
+  onIntent?: (intent: string, data?: any) => void; // New prop for page control
 }
+
+const ASSISTANT_PERSONA =
+  'You are Muse, a warm, human-like AI assistant for the MuseRoom Dashboard. Respond conversationally, helpfully, and can help with any user request, not just Discord. If the user asks for a page change or app action, return a JSON object with an \'intent\' field (e.g., {"intent":"show_messages"}) in addition to your response.';
 
 export function VoiceAgent({
   selectedVoice,
   useElevenLabs,
   availableVoices,
   elevenLabsApiKey,
+  onIntent,
 }: VoiceAgentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState("");
@@ -112,32 +118,9 @@ export function VoiceAgent({
 
   // Initialize with welcome message and speak it
   useEffect(() => {
-    const welcomeText = generateWelcomeGreeting();
-    const welcomeMessage: Message = {
-      id: "welcome",
-      text: welcomeText,
-      timestamp: new Date(),
-      isUser: false,
-    };
-    setMessages([welcomeMessage]);
-
-    // Speak the welcome message after a short delay to ensure everything is loaded
-    const speakWelcome = async () => {
-      // Wait for component to fully mount and voice system to initialize
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
-
-      if (!isMuted && voiceAssistant && voiceAssistant.speak) {
-        console.log("Speaking welcome message:", welcomeText);
-        try {
-          await voiceAssistant.speak(welcomeText);
-        } catch (error) {
-          console.error("Error speaking welcome message:", error);
-        }
-      }
-    };
-
-    speakWelcome();
-  }, []); // Only run once on mount
+    // The assistant will now only respond when the user interacts.
+    // No automatic greeting on mount.
+  }, []);
 
   // Handle speech recognition errors
   useEffect(() => {
@@ -221,31 +204,27 @@ export function VoiceAgent({
     [isMuted, voiceAssistant, toast]
   );
 
+  // Unified processCommand using Gemini
   const processCommand = async (command: string): Promise<string> => {
-    console.log("Processing command:", command);
-
-    const lowerCommand = command.toLowerCase();
-
-    if (lowerCommand.includes("hello") || lowerCommand.includes("hi")) {
-      return "Hello! Welcome to MuseRoom! I'm here to help you with Discord messages and summaries. What would you like me to do?";
+    const prompt = `${ASSISTANT_PERSONA}\nUser: ${command}\nMuse:`;
+    const geminiRaw = await getGeminiResponse(prompt);
+    // Try to extract intent JSON if present
+    let intent = null;
+    let response = geminiRaw;
+    try {
+      const match = geminiRaw.match(/\{\s*\"intent\".*\}/);
+      if (match) {
+        const intentObj = JSON.parse(match[0]);
+        intent = intentObj.intent;
+        response = geminiRaw.replace(match[0], "").trim();
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
     }
-
-    if (
-      lowerCommand.includes("discord") &&
-      (lowerCommand.includes("read") || lowerCommand.includes("messages"))
-    ) {
-      return await handleDiscordCommand(command);
+    if (intent && onIntent) {
+      onIntent(intent);
     }
-
-    if (lowerCommand.includes("help")) {
-      return "I can help you read Discord messages and create summaries. Try saying 'Read latest Discord messages' or 'Show Discord summary'.";
-    }
-
-    return (
-      "I understand you said: " +
-      command +
-      ". I'm specialized in helping with Discord messages. Try asking me to read Discord messages or create summaries."
-    );
+    return response;
   };
 
   const handleDiscordCommand = async (command: string): Promise<string> => {

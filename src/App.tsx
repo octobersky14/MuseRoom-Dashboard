@@ -6,12 +6,13 @@ import { Toaster } from "./components/ui/toaster";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Button } from "./components/ui/button";
-import { Mic, MessageSquare, Settings, Volume2 } from "lucide-react";
+import { Mic, MessageSquare, Settings, Volume2, Flower } from "lucide-react";
 import { motion } from "framer-motion";
 import { SplashCursor } from "./components/ui/splash-cursor";
 import axios from "axios";
 import { useToast } from "./components/ui/use-toast";
 import { AuthWrapper } from "@/components/auth/AuthWrapper";
+import MeditationGuide from "./components/MeditationGuide";
 
 interface ElevenLabsVoice {
   voice_id: string;
@@ -25,6 +26,13 @@ function App() {
   const [useElevenLabs, setUseElevenLabs] = useState(true);
   const [availableVoices, setAvailableVoices] = useState<ElevenLabsVoice[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  // Remove showMeditation modal state
+  const [activeTab, setActiveTab] = useState("voice");
+  const [meditationKey, setMeditationKey] = useState(0); // For resetting meditation
+  const stopMeditation = () => {
+    // To stop meditation, re-mount the MeditationGuide by changing its key
+    setMeditationKey((k) => k + 1);
+  };
 
   const { toast } = useToast();
   const elevenLabsApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
@@ -132,6 +140,16 @@ function App() {
     }
   };
 
+  // Handle AI intent for navigation and control
+  const handleAIIntent = (intent) => {
+    if (intent === "show_messages") setActiveTab("messages");
+    else if (intent === "show_settings") setActiveTab("settings");
+    else if (intent === "show_meditation") setActiveTab("meditation");
+    else if (intent === "show_voice") setActiveTab("voice");
+    else if (intent === "stop_meditation") stopMeditation();
+    // Add more intents as needed
+  };
+
   return (
     <AuthWrapper>
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
@@ -158,6 +176,8 @@ function App() {
         {/* Main Content */}
         <div className="container mx-auto px-4 py-8 relative z-10">
           <div className="max-w-4xl mx-auto">
+            {/* Navigation Bar */}
+            {/* Removed the upper right corner button */}
             <motion.div
               className="text-center mb-8"
               initial={{ opacity: 0, y: -20 }}
@@ -266,8 +286,12 @@ function App() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.8 }}
             >
-              <Tabs defaultValue="voice" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 card-modern">
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="w-full"
+              >
+                <TabsList className="grid w-full grid-cols-4 card-modern">
                   <TabsTrigger
                     value="voice"
                     className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white transition-all duration-300 hover:bg-secondary/80"
@@ -289,6 +313,13 @@ function App() {
                     <Settings className="h-4 w-4" />
                     Settings
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="meditation"
+                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white transition-all duration-300 hover:bg-secondary/80"
+                  >
+                    <Flower className="h-4 w-4" />
+                    Meditation
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="voice" className="mt-6">
@@ -304,6 +335,7 @@ function App() {
                         useElevenLabs={useElevenLabs}
                         availableVoices={availableVoices}
                         elevenLabsApiKey={elevenLabsApiKey}
+                        onIntent={handleAIIntent}
                       />
                     </CardContent>
                   </Card>
@@ -484,6 +516,23 @@ function App() {
                           </div>
                         </div>
                       </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                <TabsContent value="meditation" className="mt-6">
+                  <Card className="card-modern">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-semibold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                        Guided Meditation
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <MeditationGuide
+                        key={meditationKey}
+                        elevenLabsApiKey={elevenLabsApiKey}
+                        selectedVoice={selectedVoice}
+                        stopMeditation={stopMeditation}
+                      />
                     </CardContent>
                   </Card>
                 </TabsContent>
