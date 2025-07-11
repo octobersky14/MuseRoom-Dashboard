@@ -2,11 +2,18 @@
 import React, { useState, useEffect } from "react";
 import { VoiceAgent } from "./components/VoiceAgent";
 import { DiscordMessages } from "./components/DiscordMessages";
+import { NotionWorkspace } from "./components/NotionWorkspace";
 import { Toaster } from "./components/ui/toaster";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Button } from "./components/ui/button";
-import { Mic, MessageSquare, Settings, Volume2 } from "lucide-react";
+import {
+  MessageSquare,
+  Settings,
+  Volume2,
+  Brain,
+  BookOpen,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { SplashCursor } from "./components/ui/splash-cursor";
 import axios from "axios";
@@ -28,6 +35,9 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
+  const [activeAssistant, setActiveAssistant] = useState<
+    "general" | "discord" | "notion"
+  >("general");
 
   const { toast } = useToast();
   const elevenLabsApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
@@ -36,14 +46,56 @@ function App() {
   const handlePromptSend = (message: string) => {
     setInitialPrompt(message);
     setShowChat(true);
+    setActiveAssistant("general"); // Default to general AI when typing a prompt
   };
 
   // Handler for logo click (existing behavior)
   const handleLogoClick = () => {
     setShowChat(true);
     setInitialPrompt(null);
+    setActiveAssistant("general"); // Default to general AI assistant when clicking the logo
     if ((window as any).toggleVoiceListening) {
       (window as any).toggleVoiceListening();
+    }
+  };
+
+  // Handler for AI intent detection (for navigation, etc.)
+  const handleIntent = (intent: string, data?: any) => {
+    console.log("Intent detected:", intent, data);
+
+    switch (intent) {
+      case "navigate":
+        if (data?.target === "discord" || data?.target === "messages") {
+          setActiveAssistant("discord");
+        } else if (
+          data?.target === "notion" ||
+          data?.target === "workspace" ||
+          data?.target === "notes" ||
+          data?.target === "tasks"
+        ) {
+          setActiveAssistant("notion");
+        } else if (
+          data?.target === "voice" ||
+          data?.target === "voice assistant" ||
+          data?.target === "general" ||
+          data?.target === "assistant"
+        ) {
+          setActiveAssistant("general");
+        }
+        break;
+      case "show_messages":
+        setActiveAssistant("discord");
+        break;
+      case "show_workspace":
+      case "show_notion":
+        setActiveAssistant("notion");
+        break;
+      case "voice_mode":
+        setActiveAssistant("general");
+        break;
+      default:
+        // Handle other intents as needed
+        break;
     }
   };
 
@@ -263,32 +315,86 @@ function App() {
                   {/* Click instruction */}
                   <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-center">
                     <p className="text-xs text-muted-foreground/70 font-medium bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50">
-                      Click to activate voice assistant
+                      Click to activate AI assistant
                     </p>
                   </div>
                 </div>
               </motion.div>
             </motion.div>
 
-            {/* AI Prompt Button/Box under the logo */}
+            {/* AI Assistants Section */}
             <div className="flex justify-center mb-8">
-              <div className="w-full max-w-xl">
+              <div className="w-full max-w-4xl">
                 {!showChat ? (
-                  <PromptInputBox
-                    onSend={(msg) => handlePromptSend(msg)}
-                    placeholder="Ask MuseRoom anything..."
-                  />
+                  <div className="space-y-6">
+                    <div className="max-w-xl mx-auto">
+                      <PromptInputBox
+                        onSend={(msg) => handlePromptSend(msg)}
+                        placeholder="Ask MuseRoom anything..."
+                      />
+                    </div>
+
+                    {/* Notion Workspace Section */}
+                    <div className="w-full">
+                      <NotionWorkspace className="mx-auto" />
+                    </div>
+                  </div>
                 ) : (
-                  <VoiceAgent
-                    selectedVoice={selectedVoice}
-                    useElevenLabs={useElevenLabs}
-                    availableVoices={availableVoices}
-                    elevenLabsApiKey={elevenLabsApiKey}
-                    initialPrompt={initialPrompt}
-                    onPromptHandled={() => setInitialPrompt(null)}
-                    showChat={showChat}
-                    setShowChat={setShowChat}
-                  />
+                  <Card className="bg-gradient-to-br from-purple-900/30 via-[#232136]/80 to-pink-900/30 border border-purple-500/40 backdrop-blur-xl">
+                    <Tabs
+                      value={activeAssistant}
+                      onValueChange={(value) =>
+                        setActiveAssistant(
+                          value as "general" | "discord" | "notion"
+                        )
+                      }
+                    >
+                      <TabsList className="grid w-full grid-cols-3 bg-gray-800/60 border border-gray-600/30">
+                        <TabsTrigger
+                          value="general"
+                          className="flex items-center gap-2 data-[state=active]:bg-purple-600/20 data-[state=active]:text-purple-300"
+                        >
+                          <Brain className="w-4 h-4" />
+                          AI Assistant
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="discord"
+                          className="flex items-center gap-2 data-[state=active]:bg-green-600/20 data-[state=active]:text-green-300"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          Discord Messages
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="notion"
+                          className="flex items-center gap-2 data-[state=active]:bg-blue-600/20 data-[state=active]:text-blue-300"
+                        >
+                          <BookOpen className="w-4 h-4" />
+                          Notion Workspace
+                        </TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="general" className="mt-0">
+                        <VoiceAgent
+                          selectedVoice={selectedVoice}
+                          useElevenLabs={useElevenLabs}
+                          availableVoices={availableVoices}
+                          elevenLabsApiKey={elevenLabsApiKey}
+                          initialPrompt={initialPrompt}
+                          onPromptHandled={() => setInitialPrompt(null)}
+                          showChat={true}
+                          setShowChat={setShowChat}
+                        />
+                      </TabsContent>
+
+                      <TabsContent value="discord" className="mt-0">
+                        <DiscordMessages />
+                      </TabsContent>
+
+                      <TabsContent value="notion" className="mt-0 p-0">
+                        <NotionWorkspace />
+                      </TabsContent>
+                    </Tabs>
+                  </Card>
                 )}
               </div>
             </div>
@@ -306,7 +412,7 @@ function App() {
               ></p>
             </motion.div>
 
-            {/* Chat/VoiceAgent is now unified with the prompt box above */}
+            {/* Tabbed AI Assistant Interface */}
           </div>
         </div>
       </div>

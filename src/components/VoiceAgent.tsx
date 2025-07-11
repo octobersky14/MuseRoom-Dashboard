@@ -106,16 +106,19 @@ export function VoiceAgent({
       timeGreeting = "Good evening";
     }
 
-    const goals = [
-      "reviewing Discord messages and community updates",
-      "managing team communications",
-      "staying connected with your community",
-      "tracking important discussions",
+    const capabilities = [
+      "managing your Discord messages and summaries",
+      "helping with page navigation and app control",
+      "adding notes to Notion and managing tasks",
+      "analyzing conversations and providing insights",
+      "controlling project settings and workflows",
+      "answering questions and providing assistance",
     ];
 
-    const randomGoal = goals[Math.floor(Math.random() * goals.length)];
+    const randomCapability =
+      capabilities[Math.floor(Math.random() * capabilities.length)];
 
-    return `${timeGreeting}! Welcome to MuseRoom Dashboard. Today is ${dayName}, ${monthDay}. I'm here to help you with ${randomGoal}. Click the animation above to start voice chat, or try saying "Hello" to begin our conversation.`;
+    return `${timeGreeting}! Welcome to MuseRoom Dashboard. Today is ${dayName}, ${monthDay}. I'm your unified AI assistant, ready to help with ${randomCapability}. You can speak to me directly or type your questions - I understand both voice and text commands.`;
   };
 
   // Only run this effect on mount and when initialPrompt changes
@@ -258,10 +261,12 @@ export function VoiceAgent({
 
     const lowerCommand = command.toLowerCase();
 
+    // Greeting responses
     if (lowerCommand.includes("hello") || lowerCommand.includes("hi")) {
-      return "Hello! Welcome to MuseRoom! I'm here to help you with Discord messages and summaries. What would you like me to do?";
+      return "Hello! I'm your AI assistant for MuseRoom. I can help with Discord messages, page navigation, Notion tasks, project management, and much more. What would you like me to help you with?";
     }
 
+    // Discord-related commands
     if (
       lowerCommand.includes("discord") &&
       (lowerCommand.includes("read") || lowerCommand.includes("messages"))
@@ -269,15 +274,66 @@ export function VoiceAgent({
       return await handleDiscordCommand(command);
     }
 
-    if (lowerCommand.includes("help")) {
-      return "I can help you read Discord messages and create summaries. Try saying 'Read latest Discord messages' or 'Show Discord summary'.";
+    // Navigation commands
+    if (
+      lowerCommand.includes("navigate") ||
+      lowerCommand.includes("go to") ||
+      lowerCommand.includes("show")
+    ) {
+      if (
+        lowerCommand.includes("discord") ||
+        lowerCommand.includes("messages")
+      ) {
+        return "I'll navigate you to the Discord messages tab to view your latest messages and summaries.";
+      }
+      if (
+        lowerCommand.includes("notion") ||
+        lowerCommand.includes("workspace") ||
+        lowerCommand.includes("notes") ||
+        lowerCommand.includes("tasks")
+      ) {
+        return "I'll navigate you to the Notion workspace where you can manage your notes, tasks, and projects.";
+      }
+      return "I can help you navigate to different sections of the dashboard. Try saying 'show discord messages', 'show notion workspace', or 'go to settings'.";
     }
 
-    return (
-      "I understand you said: " +
-      command +
-      ". I'm specialized in helping with Discord messages. Try asking me to read Discord messages or create summaries."
-    );
+    // Notion integration
+    if (
+      lowerCommand.includes("notion") ||
+      lowerCommand.includes("note") ||
+      lowerCommand.includes("task")
+    ) {
+      return "I can help you access your company's Notion workspace! You can configure your workspace URL in the Notion tab, and I'll provide quick links to all your team pages. Say 'show notion workspace' to get started.";
+    }
+
+    // Help and capabilities
+    if (
+      lowerCommand.includes("help") ||
+      lowerCommand.includes("what can you do")
+    ) {
+      return "I'm your unified AI assistant! I can help with: Discord message management and summaries, Notion workspace for notes and tasks, page navigation, project management, answering questions, and general assistance. Try saying 'show discord messages', 'show notion workspace', or ask me any question!";
+    }
+
+    // Project management
+    if (
+      lowerCommand.includes("project") ||
+      lowerCommand.includes("manage") ||
+      lowerCommand.includes("organize")
+    ) {
+      return "I can help you manage your projects and workflow. I can assist with organizing tasks, tracking progress, and connecting with your project management tools.";
+    }
+
+    // General AI assistance
+    if (
+      lowerCommand.includes("analyze") ||
+      lowerCommand.includes("summarize") ||
+      lowerCommand.includes("explain")
+    ) {
+      return "I can analyze and summarize content for you. Whether it's Discord conversations, project updates, or general information, I'm here to help break it down and provide insights.";
+    }
+
+    // Default response - more comprehensive than before
+    return `I heard you say: "${command}". I'm your unified AI assistant and I can help with Discord messages, Notion workspace, page navigation, project management, and much more. Try asking me to "show Discord messages", "show notion workspace", or "what can you do?" to get started.`;
   };
 
   const handleDiscordCommand = async (command: string): Promise<string> => {
