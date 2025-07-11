@@ -29,72 +29,131 @@ export function DiscordMessages() {
     fetchMessages();
   }, []);
 
-  const fetchMessages = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.post(
-        "https://hadleycarr04.app.n8n.cloud/webhook/discord-message",
-        {
-          action: "read",
-          channel: channelFilter || undefined,
+
+// Rate limiting variables
+let lastRequestTime = 0;
+const MIN_INTERVAL = 2000; // 2 seconds between requests
+const messageCache = new Map();
+const CACHE_DURATION = 30000; // 30 seconds cache
+
+const fetchMessages = async () => {
+  console.log("function being called");
+  setLoading(true);
+
+  try {
+    // Check cache first
+    const cacheKey = `messages-${channelFilter || 'all'}`;
+    const cached = messageCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log("Using cached data");
+      setMessages(cached.data);
+      setLastFetch(new Date(cached.timestamp));
+      setLoading(false);
+      toast({
+        title: "Messages Loaded",
+        description: `Retrieved ${cached.data.length} messages (cached)`,
+      });
+      return;
+    }
+
+    // Rate limiting - ensure minimum interval between requests
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime;
+    
+    if (timeSinceLastRequest < MIN_INTERVAL) {
+      const waitTime = MIN_INTERVAL - timeSinceLastRequest;
+      console.log(`Rate limiting: waiting ${waitTime}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    lastRequestTime = Date.now();
+
+    const response = await axios.post(
+      "https://hadleycarr04.app.n8n.cloud/webhook/ai-process",
+      {
+        action: "read",
+        channel: channelFilter || undefined,
+      },
+      {
+        timeout: 15000, // Increased timeout for rate-limited requests
+        headers: {
+          "Content-Type": "application/json",
         },
-        {
-          timeout: 10000, // 10 second timeout
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+      }
+    );
+
+    if (response.data) {
+      console.log(response);
+      const formattedMessages: DiscordMessage[] = response.data.map(
+        (msg: any) => ({
+          id: msg.id || Math.random().toString(),
+          content: msg.content || msg.text || "",
+          author: msg.author || msg.username || "Unknown",
+          timestamp: msg.timestamp || new Date().toISOString(),
+          channel: msg.channel || "general",
+          avatar: msg.avatar,
+        })
       );
 
-      if (response.data && response.data.messages) {
-        const formattedMessages: DiscordMessage[] = response.data.messages.map(
-          (msg: any) => ({
-            id: msg.id || Math.random().toString(),
-            content: msg.content || msg.text || "",
-            author: msg.author || msg.username || "Unknown",
-            timestamp: msg.timestamp || new Date().toISOString(),
-            channel: msg.channel || "general",
-            avatar: msg.avatar,
-          })
-        );
+      // Cache the successful response
+      messageCache.set(cacheKey, {
+        data: formattedMessages,
+        timestamp: Date.now()
+      });
 
-        setMessages(formattedMessages);
-        setLastFetch(new Date());
-
-        toast({
-          title: "Messages Fetched",
-          description: `Retrieved ${formattedMessages.length} messages`,
-        });
-      } else {
-        // Use mock data if no messages returned
-        const mockMessages = generateMockMessages();
-        setMessages(mockMessages);
-        setLastFetch(new Date());
-
-        toast({
-          title: "Demo Messages Loaded",
-          description:
-            "Showing sample Discord messages (webhook not configured)",
-        });
-      }
-    } catch (error: any) {
-      console.error("Error fetching messages:", error);
-
-      // Provide mock data when webhook fails
+      setMessages(formattedMessages);
+      setLastFetch(new Date());
+      toast({
+        title: "Messages Fetched",
+        description: `Retrieved ${formattedMessages.length} messages`,
+      });
+    } else {
+      // Use mock data if no messages returned
+      console.log("no messages returned");
       const mockMessages = generateMockMessages();
       setMessages(mockMessages);
       setLastFetch(new Date());
-
       toast({
-        title: "Using Demo Data",
-        description:
-          "Cannot connect to Discord webhook. Showing sample messages.",
-        variant: "default",
+        title: "Demo Messages Loaded",
+        description: "Showing sample Discord messages (webhook not configured)",
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error: any) {
+    console.error("Error fetching messages:", error);
+
+    // Handle rate limiting with simple delay
+    if (error.response?.status === 429) {
+      const retryAfter = error.response.headers['retry-after'] || 5; // Default 5 seconds
+      console.log(`Rate limited. Please wait ${retryAfter} seconds before trying again.`);
+      
+      toast({
+        title: "Rate Limited",
+        description: `Please wait ${retryAfter} seconds before trying again.`,
+        variant: "destructive",
+      });
+
+      // Don't retry automatically - just show cached/mock data
+      const mockMessages = generateMockMessages();
+      setMessages(mockMessages);
+      setLastFetch(new Date());
+      return;
+    }
+
+    // Provide mock data when webhook fails
+    const mockMessages = generateMockMessages();
+    setMessages(mockMessages);
+    setLastFetch(new Date());
+    
+    toast({
+      title: "Using Demo Data",
+      description: "Cannot connect to Discord webhook. Showing sample messages.",
+      variant: "default",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const generateMockMessages = (): DiscordMessage[] => {
     return [
@@ -139,7 +198,7 @@ export function DiscordMessages() {
     setLoading(true);
     try {
       const response = await axios.post(
-        "https://hadleycarr04.app.n8n.cloud/webhook/discord-message",
+        "https://hadleycarr04.app.n8n.cloud/webhook/ai-process",
         {
           action: "send",
           summary: sendSummary,
@@ -230,7 +289,7 @@ export function DiscordMessages() {
           />
         </div>
         <Button
-          onClick={fetchMessages}
+          onClick ={fetchMessages}
           disabled={loading}
           className="flex items-center gap-2"
         >
