@@ -1,14 +1,13 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { AuthUser, DbUser } from "@/types";
+import { useUser } from "@clerk/clerk-react";
 
 interface AuthContextType {
   user: AuthUser | null;
   dbUser: DbUser | null;
-  session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -28,103 +27,62 @@ interface AuthProviderProps {
   children: React.ReactNode;
 }
 
+const ALLOWED_EMAIL = "christopher_inkum@brown.edu";
+
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const { user: clerkUser, isLoaded } = useUser();
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchDbUser = async (userId: string) => {
-    try {
-      // Skip database calls if using placeholder credentials
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("placeholder")) {
-        console.warn(
-          "Skipping database call - using placeholder Supabase credentials"
-        );
-        return null;
-      }
-
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", userId)
-        .single();
-
-      if (error) {
-        console.error("Error fetching user:", error);
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      return null;
-    }
-  };
-
-  const refreshUser = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session?.user) {
-      const dbUserData = await fetchDbUser(session.user.id);
-      setDbUser(dbUserData);
-    }
-  };
-
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error("Error signing out:", error);
-    }
-  };
-
+  // Upsert user info into Supabase if allowed
   useEffect(() => {
-    const getSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setSession(session);
-      setUser((session?.user as AuthUser) ?? null);
-
-      if (session?.user) {
-        const dbUserData = await fetchDbUser(session.user.id);
-        setDbUser(dbUserData);
-      }
-
-      setLoading(false);
-    };
-
-    getSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      setUser((session?.user as AuthUser) ?? null);
-
-      if (session?.user) {
-        const dbUserData = await fetchDbUser(session.user.id);
-        setDbUser(dbUserData);
+    const syncUser = async () => {
+      setLoading(true);
+      if (
+        isLoaded &&
+        clerkUser &&
+        clerkUser.primaryEmailAddress?.emailAddress === ALLOWED_EMAIL
+      ) {
+        const userId = clerkUser.id;
+        const email = clerkUser.primaryEmailAddress.emailAddress;
+        const full_name = clerkUser.fullName || null;
+        const avatar_url = clerkUser.imageUrl || null;
+        // Upsert user into Supabase
+        const { data, error } = await supabase
+          .from("users")
+          .upsert(
+            {
+              id: userId,
+              email,
+              full_name,
+              avatar_url,
+            },
+            { onConflict: "id" }
+          )
+          .select()
+          .single();
+        if (!error) {
+          setDbUser(data);
+        } else {
+          setDbUser(null);
+        }
       } else {
         setDbUser(null);
       }
-
       setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    };
+    syncUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clerkUser, isLoaded]);
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: clerkUser as AuthUser | null,
         dbUser,
-        session,
         loading,
-        signOut,
-        refreshUser,
+        signOut: async () => {},
+        refreshUser: async () => {},
       }}
     >
       {children}

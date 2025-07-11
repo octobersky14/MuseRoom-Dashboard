@@ -8,7 +8,6 @@ import axios from "axios";
 import { useVoiceAssistant } from "../../useVoiceAssistant";
 import useDirectSpeechRecognition, {
   RecognitionStatus,
-  TranscriptConfidence,
 } from "../../useDirectSpeechRecognition";
 
 interface Message {
@@ -29,6 +28,10 @@ interface VoiceAgentProps {
   useElevenLabs: boolean;
   availableVoices: ElevenLabsVoice[];
   elevenLabsApiKey: string;
+  initialPrompt?: string | null;
+  onPromptHandled?: () => void;
+  showChat?: boolean;
+  setShowChat?: (show: boolean) => void;
 }
 
 export function VoiceAgent({
@@ -36,15 +39,19 @@ export function VoiceAgent({
   useElevenLabs,
   availableVoices,
   elevenLabsApiKey,
+  initialPrompt,
+  onPromptHandled,
+  showChat = true,
+  setShowChat,
 }: VoiceAgentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+  const [textInput, setTextInput] = useState("");
 
   const { toast } = useToast();
-  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Use the sophisticated direct speech recognition hook
   const speechRecognition = useDirectSpeechRecognition();
@@ -57,7 +64,7 @@ export function VoiceAgent({
     muted: isMuted,
     elevenLabsApiKey: useElevenLabs ? elevenLabsApiKey : "",
     elevenLabsVoiceId: selectedVoice,
-    waveformCanvas: waveformCanvasRef.current,
+    waveformCanvas: null, // Disabled for performance - using simple GIF speed changes instead
     onSpeakingChange: (speaking) => {
       console.log("Assistant speaking:", speaking);
     },
@@ -80,16 +87,89 @@ export function VoiceAgent({
     processUserInput(transcript.trim());
   }
 
-  // Initialize with welcome message
+  // Generate time-based greeting
+  const generateWelcomeGreeting = () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayName = now.toLocaleDateString("en-US", { weekday: "long" });
+    const monthDay = now.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+    });
+
+    let timeGreeting = "";
+    if (hour < 12) {
+      timeGreeting = "Good morning";
+    } else if (hour < 17) {
+      timeGreeting = "Good afternoon";
+    } else {
+      timeGreeting = "Good evening";
+    }
+
+    const goals = [
+      "reviewing Discord messages and community updates",
+      "managing team communications",
+      "staying connected with your community",
+      "tracking important discussions",
+    ];
+
+    const randomGoal = goals[Math.floor(Math.random() * goals.length)];
+
+    return `${timeGreeting}! Welcome to MuseRoom Dashboard. Today is ${dayName}, ${monthDay}. I'm here to help you with ${randomGoal}. Click the animation above to start voice chat, or try saying "Hello" to begin our conversation.`;
+  };
+
+  // Only run this effect on mount and when initialPrompt changes
   useEffect(() => {
-    const welcomeMessage: Message = {
-      id: "welcome",
-      text: "Hello! Welcome to MuseRoom! Click the AI assistant animation above to start your voice assistant. I can help you read Discord messages and send summaries. Try saying 'Hello' or 'Read latest Discord messages' to get started!",
-      timestamp: new Date(),
-      isUser: false,
-    };
-    setMessages([welcomeMessage]);
-  }, []);
+    if (initialPrompt) {
+      // If there is an initial prompt, add only the user message and process it
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: initialPrompt,
+        timestamp: new Date(),
+        isUser: true,
+      };
+      setMessages([userMessage]);
+      setCurrentTranscript("");
+      setIsProcessing(true);
+      processCommand(initialPrompt).then((response) => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: response,
+          timestamp: new Date(),
+          isUser: false,
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+        setIsProcessing(false);
+        if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+          voiceAssistant.speak(response);
+        }
+        if (onPromptHandled) onPromptHandled();
+      });
+    } else {
+      // If there is no initial prompt, show the greeting only
+      const welcomeText = generateWelcomeGreeting();
+      const welcomeMessage: Message = {
+        id: "welcome",
+        text: welcomeText,
+        timestamp: new Date(),
+        isUser: false,
+      };
+      setMessages([welcomeMessage]);
+      // Speak the welcome message after a short delay to ensure everything is loaded
+      const speakWelcome = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
+        if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+          try {
+            await voiceAssistant.speak(welcomeText);
+          } catch (error) {
+            console.error("Error speaking welcome message:", error);
+          }
+        }
+      };
+      speakWelcome();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt]);
 
   // Handle speech recognition errors
   useEffect(() => {
@@ -101,6 +181,15 @@ export function VoiceAgent({
       });
     }
   }, [speechRecognition.errorMessage, toast]);
+
+  // Handle text input submission
+  const handleTextSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!textInput.trim()) return;
+
+    await processUserInput(textInput.trim());
+    setTextInput("");
+  };
 
   const processUserInput = useCallback(
     async (userInput: string) => {
@@ -202,14 +291,37 @@ export function VoiceAgent({
     }
   };
 
-  const toggleListening = () => {
+  // Add debouncing to prevent rapid clicking
+  const lastToggleRef = React.useRef(0);
+
+  const toggleListening = useCallback(() => {
+    const now = Date.now();
+
+    if (now - lastToggleRef.current < 1000) {
+      // Less than 1 second since last toggle, ignore
+      console.log("Toggle ignored due to debouncing");
+      return;
+    }
+
+    lastToggleRef.current = now;
+
     if (speechRecognition.isListening) {
       speechRecognition.stopListening();
       voiceAssistant.stop();
+      setIsVoiceEnabled(false);
     } else {
+      // Enable voice assistant if not already enabled
+      if (!isVoiceEnabled) {
+        setIsVoiceEnabled(true);
+      }
+
+      // Clear any previous error messages when starting
+      if (speechRecognition.errorMessage) {
+        console.log("Clearing previous error message and retrying");
+      }
       speechRecognition.startListening();
     }
-  };
+  }, [speechRecognition, voiceAssistant, isVoiceEnabled]);
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
@@ -239,396 +351,231 @@ export function VoiceAgent({
     }
   };
 
-  const getConfidenceColor = () => {
-    switch (speechRecognition.confidence) {
-      case TranscriptConfidence.HIGH:
-        return "text-green-500";
-      case TranscriptConfidence.MEDIUM:
-        return "text-yellow-500";
-      case TranscriptConfidence.LOW:
-        return "text-red-500";
-      default:
-        return "text-gray-500";
-    }
-  };
+  // Create a function to manually trigger welcome greeting
+  const triggerWelcomeGreeting = React.useCallback(async () => {
+    const welcomeText = generateWelcomeGreeting();
+    console.log("Manually triggering welcome greeting:", welcomeText);
 
-  // Expose the toggle function globally so the GIF can trigger it
+    if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+      try {
+        await voiceAssistant.speak(welcomeText);
+      } catch (error) {
+        console.error("Error speaking manual welcome message:", error);
+      }
+    }
+  }, [isMuted, voiceAssistant]);
+
+  // Expose functions globally so the GIF and console can trigger them
   React.useEffect(() => {
     (window as any).toggleVoiceListening = toggleListening;
+    (window as any).speakWelcome = triggerWelcomeGreeting;
     return () => {
       delete (window as any).toggleVoiceListening;
+      delete (window as any).speakWelcome;
     };
-  }, [toggleListening]);
+  }, [toggleListening, triggerWelcomeGreeting]);
 
-  // Update the main GIF's visual state based on voice status
+  // Update the main GIF's visual state based on voice status (outline only)
   React.useEffect(() => {
-    const indicator = document.getElementById("voice-listening-indicator");
-    const statusText = document.getElementById("voice-status-text");
+    const container = document.querySelector(".ai-assistant-container");
 
-    if (indicator && statusText) {
+    if (container) {
       if (speechRecognition.isListening) {
-        indicator.style.display = "block";
-        statusText.textContent = "🎤 Listening... Click again to stop";
-        statusText.className = "text-sm text-green-600 font-medium";
-      } else if (isProcessing) {
-        indicator.style.display = "none";
-        statusText.textContent = "⚡ Processing your request...";
-        statusText.className = "text-sm text-blue-600 font-medium";
+        // Add listening state class for green outline effect
+        container.classList.add("listening-active");
+        container.classList.remove("speaking-active");
       } else {
-        indicator.style.display = "none";
-        statusText.textContent =
-          "Voice assistant ready - Click the animation above to start";
-        statusText.className = "text-sm text-muted-foreground/70 font-medium";
+        // Remove listening state class
+        container.classList.remove("listening-active");
       }
     }
-  }, [speechRecognition.isListening, isProcessing]);
+  }, [speechRecognition.isListening]);
 
-  // Connect audio levels to GIF animation speed and pulse
+  // Update the main GIF's visual state for speaking (purple pulse effect)
+  React.useEffect(() => {
+    const container = document.querySelector(".ai-assistant-container");
+
+    if (container) {
+      if (voiceAssistant.isSpeaking()) {
+        // Add speaking state class for purple pulse effect
+        container.classList.add("speaking-active");
+        container.classList.remove("listening-active");
+      } else {
+        // Remove speaking state class
+        container.classList.remove("speaking-active");
+      }
+    }
+  }, [voiceAssistant.isSpeaking()]);
+
+  // Efficient GIF animation state management (no infinite loops)
   React.useEffect(() => {
     const gif = document.getElementById("ai-assistant-gif");
-    const ring1 = document.getElementById("audio-ring-1");
-    const ring2 = document.getElementById("audio-ring-2");
-    const ring3 = document.getElementById("audio-ring-3");
-
     if (!gif) return;
 
-    let userAnimationFrame: number;
-    let aiAnimationFrame: number;
-    let userAudioContext: AudioContext | null = null;
-    let userAnalyser: AnalyserNode | null = null;
-    let userMicrophone: MediaStreamAudioSourceNode | null = null;
-    let userDataArray: Uint8Array | null = null;
+    // Remove all existing speed classes
+    gif.classList.remove(
+      "ai-assistant-gif-idle",
+      "ai-assistant-gif-slow",
+      "ai-assistant-gif-normal",
+      "ai-assistant-gif-fast",
+      "ai-assistant-gif-intense",
+      "ai-assistant-gif-speaking"
+    );
 
-    // User input visualization (pulse effects)
-    const startUserAudioVisualization = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        userAudioContext = new AudioContext();
-        userMicrophone = userAudioContext.createMediaStreamSource(stream);
-        userAnalyser = userAudioContext.createAnalyser();
-
-        userAnalyser.fftSize = 256;
-        userAnalyser.smoothingTimeConstant = 0.3;
-        userDataArray = new Uint8Array(userAnalyser.frequencyBinCount);
-
-        userMicrophone.connect(userAnalyser);
-
-        const updateUserPulse = () => {
-          if (!userAnalyser || !userDataArray || !gif) return;
-
-          userAnalyser.getByteFrequencyData(userDataArray);
-
-          // Calculate average audio level for user input
-          let sum = 0;
-          for (let i = 0; i < userDataArray.length; i++) {
-            sum += userDataArray[i];
-          }
-          const average = sum / userDataArray.length;
-          const normalizedLevel = Math.min(average / 128, 1); // Normalize to 0-1
-
-          // Control pulse intensity with CSS custom properties
-          const pulseIntensity = Math.max(normalizedLevel * 2, 0.2); // Minimum pulse
-          const pulseSpeed = Math.max(2 - normalizedLevel * 1.5, 0.3); // Faster pulse with more audio
-
-          gif.style.setProperty(
-            "--user-pulse-intensity",
-            pulseIntensity.toString()
-          );
-          gif.style.setProperty("--user-pulse-speed", `${pulseSpeed}s`);
-
-          // Update audio level rings for user input
-          if (ring1 && ring2 && ring3) {
-            const opacity1 = Math.min(normalizedLevel * 2, 1);
-            const opacity2 = Math.min((normalizedLevel - 0.2) * 2.5, 1);
-            const opacity3 = Math.min((normalizedLevel - 0.4) * 3, 1);
-
-            ring1.style.borderColor = `rgba(34, 197, 94, ${opacity1})`; // Green for user input
-            ring2.style.borderColor = `rgba(59, 130, 246, ${Math.max(
-              opacity2,
-              0
-            )})`;
-            ring3.style.borderColor = `rgba(6, 182, 212, ${Math.max(
-              opacity3,
-              0
-            )})`;
-          }
-
-          userAnimationFrame = requestAnimationFrame(updateUserPulse);
-        };
-
-        updateUserPulse();
-      } catch (error) {
-        console.error(
-          "Error accessing microphone for user input visualization:",
-          error
-        );
-      }
-    };
-
-    const stopUserAudioVisualization = () => {
-      if (userAnimationFrame) {
-        cancelAnimationFrame(userAnimationFrame);
-      }
-      if (userMicrophone) {
-        userMicrophone.disconnect();
-      }
-      if (userAudioContext) {
-        userAudioContext.close();
-      }
-
-      // Reset user pulse effects
-      gif.style.removeProperty("--user-pulse-intensity");
-      gif.style.removeProperty("--user-pulse-speed");
-
-      // Reset rings
-      if (ring1 && ring2 && ring3) {
-        ring1.style.borderColor = "rgba(34, 197, 94, 0)";
-        ring2.style.borderColor = "rgba(59, 130, 246, 0)";
-        ring3.style.borderColor = "rgba(6, 182, 212, 0)";
-      }
-    };
-
-    // AI response visualization (speed effects)
-    const monitorAIAudio = () => {
-      // Check if AI is speaking and adjust animation speed accordingly
-      const updateAISpeed = () => {
-        // Remove all existing speed classes
-        gif.classList.remove(
-          "ai-assistant-gif-idle",
-          "ai-assistant-gif-slow",
-          "ai-assistant-gif-normal",
-          "ai-assistant-gif-fast",
-          "ai-assistant-gif-intense",
-          "ai-assistant-gif-speaking"
-        );
-
-        if (voiceAssistant.isSpeaking()) {
-          // AI is speaking - use speaking animation
-          gif.classList.add("ai-assistant-gif-speaking");
-
-          // Add orange/red rings for AI output
-          if (ring1 && ring2 && ring3) {
-            ring1.style.borderColor = "rgba(251, 146, 60, 0.8)"; // Orange for AI output
-            ring2.style.borderColor = "rgba(239, 68, 68, 0.6)"; // Red for AI output
-            ring3.style.borderColor = "rgba(168, 85, 247, 0.4)"; // Purple for AI output
-          }
-        } else if (isProcessing) {
-          // AI is processing - use normal speed
-          gif.classList.add("ai-assistant-gif-normal");
-        } else if (speechRecognition.isListening) {
-          // User can speak - use slow baseline
-          gif.classList.add("ai-assistant-gif-slow");
-        } else {
-          // Completely idle - use idle animation
-          gif.classList.add("ai-assistant-gif-idle");
-        }
-
-        aiAnimationFrame = requestAnimationFrame(updateAISpeed);
-      };
-
-      updateAISpeed();
-    };
-
-    const stopAIVisualization = () => {
-      if (aiAnimationFrame) {
-        cancelAnimationFrame(aiAnimationFrame);
-      }
-
-      // Reset to idle state
-      const gif = document.getElementById("ai-assistant-gif");
-      if (gif) {
-        gif.classList.remove(
-          "ai-assistant-gif-slow",
-          "ai-assistant-gif-normal",
-          "ai-assistant-gif-fast",
-          "ai-assistant-gif-intense",
-          "ai-assistant-gif-speaking"
-        );
-        gif.classList.add("ai-assistant-gif-idle");
-      }
-    };
-
-    // Start appropriate visualizations
-    if (speechRecognition.isListening) {
-      startUserAudioVisualization(); // Start user input visualization
+    // Apply the correct class based on current state (no animation frames needed)
+    if (voiceAssistant.isSpeaking()) {
+      gif.classList.add("ai-assistant-gif-speaking");
+    } else if (isProcessing) {
+      gif.classList.add("ai-assistant-gif-normal");
+    } else if (speechRecognition.isListening) {
+      gif.classList.add("ai-assistant-gif-slow");
     } else {
-      stopUserAudioVisualization();
+      gif.classList.add("ai-assistant-gif-idle");
     }
 
-    // Always monitor AI state
-    monitorAIAudio();
-
-    return () => {
-      stopUserAudioVisualization();
-      stopAIVisualization();
-    };
-  }, [speechRecognition.isListening, isProcessing, voiceAssistant]);
+    // No cleanup needed - just a simple class update
+  }, [speechRecognition.isListening, isProcessing, voiceAssistant.isSpeaking]);
 
   return (
-    <div className="space-y-6">
-      {/* Status Information Bar */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center space-x-6">
-              <span className={`font-medium ${getStatusColor()}`}>
-                Status: {speechRecognition.status}
-              </span>
-              {speechRecognition.confidence && (
-                <span className={`font-medium ${getConfidenceColor()}`}>
-                  Confidence: {speechRecognition.confidence}
-                </span>
-              )}
-              <span className="text-gray-500">
-                {useElevenLabs
-                  ? `Voice: ${selectedVoice}`
-                  : "Voice: Browser Default"}
-              </span>
-            </div>
-
-            {speechRecognition.isMicrophoneAvailable === false && (
-              <span className="text-red-500 font-medium flex items-center">
-                🎤 Microphone not available
-              </span>
-            )}
-          </div>
-
-          {/* Current Transcript */}
-          {(currentTranscript || speechRecognition.transcript) && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800"
-            >
-              <p className="text-sm text-blue-800 dark:text-blue-200">
-                <strong>🎤 Listening:</strong>{" "}
-                {currentTranscript || speechRecognition.transcript}
-              </p>
-            </motion.div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* GIF Waveform Info */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="text-center">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              🎨 GIF Audio Visualization
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              The AI assistant animation above responds to your voice - watch it
-              pulse and change speed based on your audio levels!
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Control Panel */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-center space-x-4">
-            {/* Processing Indicator */}
-            {isProcessing && (
-              <div className="flex items-center space-x-2 text-blue-500">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-sm font-medium">Processing...</span>
+    <>
+      {/* Only render chat UI if showChat is true */}
+      {showChat && (
+        <div className="card-modern bg-gradient-to-br from-purple-900/30 via-[#232136]/80 to-pink-900/30 border border-purple-500/40 rounded-2xl shadow-2xl backdrop-blur-xl p-0 w-full max-w-2xl mx-auto">
+          {/* Status Header */}
+          {(speechRecognition.isListening || isProcessing) && (
+            <div className="mb-6 flex items-center justify-center">
+              <div
+                className="flex items-center space-x-3 bg-gray-800/60 backdrop-blur-sm rounded-full px-4 py-2 border border-gray-600/40"
+                role="status"
+                aria-live="polite"
+                aria-label={
+                  speechRecognition.isListening
+                    ? "Voice assistant is listening"
+                    : "Voice assistant is processing"
+                }
+              >
+                {speechRecognition.isListening && (
+                  <>
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
+                    <span className="text-green-400 text-sm">Listening...</span>
+                  </>
+                )}
+                {isProcessing && (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                    <span className="text-blue-400 text-sm">Processing...</span>
+                  </>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Manual Voice Toggle Button */}
-            <Button
-              onClick={toggleListening}
-              variant={
-                speechRecognition.isListening ? "destructive" : "default"
-              }
-              size="sm"
-              className="shadow-sm"
-              disabled={!speechRecognition.browserSupportsSpeechRecognition}
-            >
-              {speechRecognition.isListening
-                ? "Stop Listening"
-                : "Start Listening"}
-            </Button>
-
-            {/* Mute Button */}
-            <Button
-              onClick={toggleMute}
-              variant={isMuted ? "destructive" : "outline"}
-              size="sm"
-              className="shadow-sm"
-            >
-              {isMuted ? (
-                <VolumeX className="h-4 w-4" />
-              ) : (
-                <Volume2 className="h-4 w-4" />
-              )}
-              <span className="ml-2 text-xs">
-                {isMuted ? "Unmute" : "Mute"}
-              </span>
-            </Button>
-
-            {/* Voice Toggle */}
-            <Button
-              onClick={toggleVoiceEnabled}
-              variant={isVoiceEnabled ? "default" : "outline"}
-              size="sm"
-              className="shadow-sm"
-            >
-              <Settings className="h-4 w-4" />
-              <span className="ml-2 text-xs">Settings</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Messages */}
-      <Card className="flex-1">
-        <CardContent className="p-0">
-          <div className="h-96 overflow-y-auto p-4 space-y-4">
+          {/* Messages Container */}
+          <div
+            className="h-80 overflow-y-auto p-6 space-y-4 custom-scrollbar mb-6"
+            role="log"
+            aria-label="Conversation messages"
+            aria-live="polite"
+          >
             <AnimatePresence>
               {messages.map((message) => (
                 <motion.div
                   key={message.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
                   className={`flex ${
                     message.isUser ? "justify-end" : "justify-start"
                   }`}
                 >
                   <div
-                    className={`max-w-xs lg:max-w-md px-4 py-3 rounded-xl shadow-sm ${
+                    className={`max-w-xs lg:max-w-md px-5 py-3 rounded-2xl shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 ${
                       message.isUser
-                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white"
-                        : "bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 text-gray-800 dark:text-gray-200"
+                        ? "bg-gradient-to-br from-blue-600 to-purple-700 text-white border border-blue-400/50"
+                        : "bg-gradient-to-br from-gray-700/95 to-gray-800/95 text-gray-100 border border-gray-600/50"
                     }`}
                   >
+                    {!message.isUser && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                        <span className="text-xs font-medium text-purple-400">
+                          Assistant
+                        </span>
+                      </div>
+                    )}
                     <p className="text-sm leading-relaxed">{message.text}</p>
-                    <p className="text-xs mt-2 opacity-70">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
+                    <div className="flex justify-between items-center mt-3">
+                      <p className="text-xs opacity-60">
+                        {message.timestamp.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                      {message.isUser && (
+                        <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               ))}
             </AnimatePresence>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Footer */}
-      <div className="text-center text-xs text-gray-500 space-y-1">
-        <div>
-          {speechRecognition.browserSupportsSpeechRecognition
-            ? "🎤 Voice recognition enabled • 🔊 ElevenLabs TTS ready • 🎨 GIF waveform active"
-            : "❌ Voice recognition not supported in this browser"}
+            {/* Typing indicator when processing */}
+            {isProcessing && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-start"
+              >
+                <div className="bg-gradient-to-br from-gray-700/95 to-gray-800/95 border border-gray-600/50 rounded-2xl px-5 py-3 backdrop-blur-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                      <div
+                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.1s" }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
+                    </div>
+                    <span className="text-xs text-purple-400">
+                      Assistant is thinking...
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Text Input Area */}
+          <div className="bg-gray-900/60 backdrop-blur-sm rounded-xl border border-gray-700/50 p-4">
+            <form onSubmit={handleTextSubmit} className="space-y-3">
+              <div className="flex items-center space-x-3">
+                <input
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  placeholder="Type a message or click the animation above for voice :)"
+                  className="flex-1 bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400/50 focus:bg-gray-800 backdrop-blur-sm transition-all duration-200"
+                  disabled={isProcessing}
+                  aria-label="Type your message"
+                />
+                <button
+                  type="submit"
+                  disabled={!textInput.trim() || isProcessing}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-xl hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105"
+                  aria-label="Send message"
+                >
+                  Send
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-        <div className="text-blue-600 dark:text-blue-400 font-medium">
-          Click the AI assistant animation above to activate voice controls
-        </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
