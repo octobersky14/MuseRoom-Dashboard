@@ -112,6 +112,8 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
       try {
         geminiServiceRef.current = new GeminiService(geminiApiKey);
         
+        // Set the system instruction - this will be added to conversation history
+        // rather than passed as a parameter in the API call
         if (systemInstruction) {
           geminiServiceRef.current.setSystemInstruction(systemInstruction);
         } else {
@@ -366,6 +368,7 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
               let the user know what you need.
             `;
             
+            // We no longer pass systemInstruction as a parameter
             return await geminiServiceRef.current.sendMessage(enhancedPrompt);
           }
         } catch (error) {

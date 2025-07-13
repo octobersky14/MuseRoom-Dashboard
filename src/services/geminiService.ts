@@ -94,6 +94,33 @@ try to provide the most relevant information and assist with any tasks they need
     options: GeminiRequestOptions = {}
   ): Promise<string> {
     try {
+      // Gemini Flash (and many models) now reject the `systemInstruction`
+      // parameter. Instead, we keep the system prompt as the first message
+      // in the chat history so it is always provided in-context.
+      const effectiveSystemInstruction =
+        options.systemInstruction?.trim() || this.systemInstruction.trim();
+
+      if (effectiveSystemInstruction) {
+        if (
+          this.conversationHistory.length === 0 ||
+          this.conversationHistory[0].role !== 'system'
+        ) {
+          // Prepend new system message
+          this.conversationHistory.unshift({
+            role: 'system',
+            parts: [{ text: effectiveSystemInstruction }],
+          });
+        } else {
+          // Update existing system message if it changed
+          const currentText = this.conversationHistory[0].parts[0]?.text;
+          if (currentText !== effectiveSystemInstruction) {
+            this.conversationHistory[0].parts = [
+              { text: effectiveSystemInstruction },
+            ];
+          }
+        }
+      }
+
       // Add user message to history
       this.addMessageToHistory({
         role: 'user',
@@ -107,7 +134,7 @@ try to provide the most relevant information and assist with any tasks they need
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxOutputTokens ?? 1024,
         },
-        systemInstruction: options.systemInstruction ?? this.systemInstruction,
+        // systemInstruction is now supplied via the first `system` message
         tools: options.tools,
       });
 
