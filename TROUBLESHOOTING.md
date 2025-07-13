@@ -1,101 +1,129 @@
 # Troubleshooting Guide
 
-This document lists the most common problems you may encounter while running or deploying the MuseRoom Dashboard and how to resolve them.
+This document helps you diagnose and fix the most common problems when running the MuseRoom Dashboard and its AI assistant stack (Gemini 1.5 Flash + Notion MCP proxy + Discord & Google Calendar integrations).
 
 ---
 
-## 1. CORS (Cross-Origin Resource Sharing)
+## 1. Understanding “Offline Mode”
 
-| Symptom | Typical Console/Error Message | Root Cause | Fix |
-|---------|------------------------------|-----------|-----|
-| Browser shows `… has been blocked by CORS policy` and the URL is **https://api.notion.com** | `No 'Access-Control-Allow-Origin' header` | Front-end tried to call Notion directly. Proxy not used or mis-configured. | 1. Make sure **proxy server** is running (`node server.js` or `npm run proxy`).<br/>2. `src/services/notionService.ts` must point to `http://localhost:3005/api/notion` (or your deployed proxy).<br/>3. Verify `VITE_NOTION_PROXY_URL` in `.env` and restart Vite dev server.<br/>4. Confirm the browser request URL now starts with `localhost:3005/api/notion`. |
-| CORS error but URL already points to proxy | `origin http://localhost:3000 not allowed` | Proxy allows only whitelisted origins. | 1. Add the origin to `ALLOWED_ORIGINS` in `.env` (comma-separated).<br/>2. Restart proxy server. |
-| Pre-flight (`OPTIONS`) request returns **404** | — | Reverse-proxy or hosting platform strips `OPTIONS` method. | Ensure your hosting setup forwards all HTTP verbs to the proxy function / server. |
+The application automatically switches to **Offline Mode** when the Gemini API cannot be reached or an authentication/quota error occurs.  
+While offline:
 
-### Quick Checks
+* The AI assistant keeps responding, but uses **local mock logic** (no live model calls).  
+* No new content is pulled from Gemini, Discord, or Google Calendar.  
+* Notion data **is still available** (via the local proxy) for read-only operations.
+
+Visual cues:
+* Amber “Offline Mode Active” banner at the top of the page.  
+* “(Offline)” badges beside assistant messages.  
+* Input placeholders and buttons turn amber.
+
+---
+
+## 2. Fixing Gemini API Key / Quota Issues
+
+Problem | Likely Cause | Resolution
+------- | ------------ | ----------
+“API key has expired” | Key is revoked or past expiry | 1) Generate a new key in Google AI console → 2) Update `.env` → `VITE_GEMINI_API_KEY=NEW_KEY` → 3) Restart both dev server & proxy.
+“Quota has been exceeded” | You hit your daily/monthly tokens | Wait for quota reset **or** upgrade plan. In the meantime, stay in Offline Mode.
+“Invalid authentication credentials” | Typo or wrong project key | Copy–paste the key again, ensure no leading/trailing spaces.
+Requests succeed in curl but fail in app | Key in frontend env differs from backend env | Confirm **both** `.env` files (root & server) match.
+
+### Key Rotation Checklist
+
+1. **Stop** the dev server (`Ctrl-C`).  
+2. Create / update `.env` and `server/.env` with the fresh key.  
+3. Run `npm run dev` (or `pnpm dev`) again.  
+4. Confirm normal mode banner disappears.
+
+---
+
+## 3. Common Error Messages & Quick Fixes
+
+Error Text in Console / Toast | Meaning | Fix
+----------------------------- | --------| ---
+`api key expired` / `invalid api key` | Gemini rejected auth | Replace key (see section 2).
+`quota exceeded` / `rate limit` | Too many requests | Wait or decrease frequency; enable billing.
+`Failed to initialize Gemini service` | Key missing in `.env` | Add `VITE_GEMINI_API_KEY`.
+`Network Error` or `ECONNREFUSED :443` | Firewall / proxy blocking | Check local network, corporate VPN, or set HTTPS proxy.
+`CORS policy: No ‘Access-Control-Allow-Origin’` | Browser tried to call Notion directly | Ensure you **are** calling `http://localhost:3001/notion/*` (see section 6).
+`First content should be with role 'user', got system` | Out-of-date Gemini schema | Pull latest code (system instructions now embedded correctly).
+
+---
+
+## 4. Testing Whether API Keys Work
+
+### Gemini
+
 ```bash
-# Is proxy alive?
-curl http://localhost:3005/health   # should return {"status":"ok"}
-# Does proxy forward?
-curl -X POST http://localhost:3005/api/notion/search \
-     -H "x-notion-api-key:$NOTION_API_KEY" \
-     -d '{"query":""}'
+curl -H "Content-Type: application/json" \
+     -H "Authorization: Bearer $VITE_GEMINI_API_KEY" \
+     -d '{ "contents": [ { "parts": [ { "text": "ping" } ] } ] }' \
+     https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent
 ```
 
----
+Expected JSON response contains `"text": ...`.
 
-## 2. API Connection Issues
+### Notion
 
-### 2.1 Notion API
-| Symptom | Fix |
-|---------|-----|
-| `401 Unauthorized` from proxy | Wrong `NOTION_API_KEY`, or integration not added to workspace. Regenerate token and update `.env`. |
-| `object_not_found` | Provided page/database ID does not exist in the workspace connected to the integration. |
+```bash
+curl http://localhost:3001/notion/v1/databases \
+     -H "x-notion-token: $VITE_NOTION_API_KEY"
+```
 
-### 2.2 Gemini (Google Generative AI)
-| Symptom | Fix |
-|---------|-----|
-| `403 PERMISSION_DENIED` | Free tier exhausted, model name typo, or key restricted by IP/HTTP referrer. Verify `GEMINI_API_KEY` and model name (`gemini-1.5-flash`). |
-| `Fetch failed` in browser | NEVER call Gemini directly from browser unless using a public key; instead, route through backend. |
-
-### 2.3 Google Calendar
-| Symptom | Fix |
-|---------|-----|
-| `invalid_grant` during OAuth | Wrong redirect URI in Google Cloud Console. Must exactly match the URL served by the app (`/auth/google/callback`). |
-| `403 insufficientPermissions` | Calendar scope missing; re-create OAuth consent screen with `https://www.googleapis.com/auth/calendar` scopes. |
-
-### 2.4 Discord
-| Symptom | Fix |
-|---------|-----|
-| Webhook returns `404` | Webhook URL reset or deleted. Generate a new one and update `VITE_DISCORD_WEBHOOK_URL`. |
-| Messages post but not visible | Bot lacks permission in channel. Grant **Manage Webhooks** or **Send Messages**. |
+Should list databases. If you get a CORS message, you hit the Notion API **directly** – use the proxy URL as above.
 
 ---
 
-## 3. Environment & Setup Problems
+## 5. Feature Matrix: Online vs Offline
 
-| Problem | How to Diagnose | Resolution |
-|---------|-----------------|------------|
-| **Missing env values** | App crashes at startup or shows `process.env.XYZ is undefined`. | Copy `.env.example` ➜ `.env` and fill in **all** placeholders. |
-| Wrong ports | Browser requests `localhost:3004` but Vite runs on `3000` (or vice-versa). | Change `vite.config.ts` or `.env` `PORT=` to align, or open correct URL. |
-| Proxy port in use | `EADDRINUSE :3005` | Another process using 3005. `lsof -i:3005` ➜ kill or change `PROXY_PORT` then restart. |
-| `TypeError: Failed to fetch` everywhere | Network offline, VPN blocking, corporate firewall. | Test with `curl` outside the app, switch network, or whitelist domains. |
-
----
-
-## 4. Logging & Debugging Tips
-
-1. **Proxy Server**  
-   • Requests logged to console (`server.js`).  
-   • Add `DEBUG=express:*` before the start command for verbose routing info.
-
-2. **Front-End**  
-   • DevTools > Network tab → verify actual request URL & headers.  
-   • React DevTools extension helps inspect component props/state.
-
-3. **Reload on env change**  
-   • Any change to `.env` requires **restarting** both Vite dev server and proxy for variables to take effect.
+Capability | Online Mode | Offline Mode
+-----------|-------------|-------------
+Natural language generation | ✅ Real Gemini responses | ⚠️ Mock template replies (limited)
+Intent detection | ✅ Model-driven | ⚠️ Heuristic fallback
+Notion read operations | ✅ | ✅
+Notion create/update/delete | ✅ | ❌ (read-only)
+Discord live summaries | ✅ | ❌
+Google Calendar actions | ✅ | ❌
+ElevenLabs TTS | ✅ (if key supplied) | ✅ (works independently)
 
 ---
 
-## 5. FAQ
+## 6. Handling CORS Errors (Notion & Other APIs)
 
-**Q:** I see `CORS` errors after deploying to production.  
-**A:** Deploy the proxy (serverless function or Node micro-service) on the same domain as your front-end (`/api/notion/*`). Update `VITE_NOTION_PROXY_URL` to the production URL and add that origin to `ALLOWED_ORIGINS`.
-
-**Q:** Can I skip the proxy and enable CORS directly on Notion?  
-**A:** Notion does not currently allow custom CORS headers. A proxy is required.
-
-**Q:** Requests work in `curl` but not in browser.  
-**A:** `curl` doesn’t enforce CORS. If browser fails, your proxy isn’t adding `Access-Control-Allow-Origin` or you’re calling the wrong domain.
+1. **Never** call `https://api.notion.com` from the browser.  
+2. Use the local proxy:  
+   `http://localhost:3001/notion/<endpoint>`  
+   The Express server adds the correct `Access-Control-Allow-Origin` headers.
+3. If you still see CORS in the browser dev tools:
+   * Verify the proxy is **running** (`node server.js` prints `Proxy listening …`).
+   * Confirm React env variable: `VITE_NOTION_PROXY_URL=http://localhost:3001/notion`.
+   * Restart the front-end dev server after changing env files.
 
 ---
 
-## 6. Still Stuck?
+## 7. Debugging the Notion Integration
 
-1. Run the health-checks above.  
-2. Search the console output for the **first error** (later errors often cascade).  
-3. Create a minimal reproduction (single endpoint call) and test with `curl`.  
-4. Open an issue with logs, exact error message, and steps to reproduce.
+Checklist:
 
-Happy debugging! 🛠️
+1. Proxy running?  
+   `curl http://localhost:3001/health` → should return `OK`.
+2. Valid Notion secret?  
+   `curl http://localhost:3001/notion/v1/users/me -H "x-notion-token:$VITE_NOTION_API_KEY"`.
+3. Using correct database/page IDs?  
+   They must be UUID‐style; remove “https://www.notion.so/…”.
+4. API version mismatch?  
+   Proxy forwards `Notion-Version: 2022-06-28` by default. Update in `server.js` if Notion upgrades.
+5. Still failing?  
+   * Run `DEBUG=proxy* node server.js` to view detailed forwarding logs.  
+   * Enable verbose logging in `src/services/notionService.ts` by setting `DEBUG_NOTION=true` in `.env`.
+
+---
+
+## Need More Help?
+
+* **Logs** – Open your browser console **and** the terminal running the proxy.  
+* **Discord** – Post your stack trace in the #museroom-dev channel.  
+* **Docs** – See `README.md` and `NOTION_MCP_SETUP.md` for environment setup.
+
+Happy debugging!

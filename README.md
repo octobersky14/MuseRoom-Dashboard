@@ -13,6 +13,7 @@ A modern voice-enabled web application that allows you to interact with Discord 
 - 📱 **Real-time Updates**: Live conversation history and message display
 - 🌓 **Dark/Light Mode**: Toggle between themes
 - ⚡ **Fast Performance**: Built with Vite for optimal development experience
+- 🛡️ **Automatic Offline Mode**: Seamlessly falls back to local mock responses when the Gemini API key expires or quota is exhausted, with clear visual indicators
 
 ## Tech Stack
 
@@ -242,7 +243,7 @@ The app requires:
 - [ ] Multiple Discord server support
 - [ ] Voice command customization
 - [ ] Message filtering and search
-- [ ] Offline mode support
+- [x] Offline mode support (automatic fallback & UI indicators)
 
 ## Support
 

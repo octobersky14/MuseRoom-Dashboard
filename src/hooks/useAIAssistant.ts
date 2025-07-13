@@ -100,6 +100,10 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
     action?: string;
   } | null>(null);
 
+  /* Offline-mode / API-error handling */
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false);
+  const [apiErrorMessage, setApiErrorMessage] = useState<string>('');
+
   // Refs
   const geminiServiceRef = useRef<GeminiService | null>(null);
   const notionServiceRef = useRef<NotionService | null>(null);
@@ -133,6 +137,24 @@ reading, updating, or searching Notion pages/databases, interacting with Discord
 messages/channels, and managing Google Calendar events.`
           );
         }
+
+        /* Immediately verify the API key – this may switch us to offline mode */
+        (async () => {
+          try {
+            const isValid = await geminiServiceRef.current!.checkApiKey?.();
+            if (isValid === false) {
+              setIsOfflineMode(true);
+              setApiErrorMessage(
+                geminiServiceRef.current!.apiKeyErrorMessage ||
+                  'Unable to reach Gemini API – running in offline mode.'
+              );
+            }
+          } catch (e) {
+            // Any error here → offline mode. Store a generic message.
+            setIsOfflineMode(true);
+            setApiErrorMessage('Error validating Gemini API key – offline mode activated.');
+          }
+        })();
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to initialize Gemini service');
         setError(error);
@@ -201,6 +223,18 @@ messages/channels, and managing Google Calendar events.`
         const error = err instanceof Error ? err : new Error('Failed to detect intent');
         setError(error);
         if (onError) onError(error);
+
+        // If this looks like an API-key / quota problem, switch to offline mode
+        const msg = error.message.toLowerCase();
+        if (
+          msg.includes('api key') ||
+          msg.includes('quota') ||
+          msg.includes('rate limit')
+        ) {
+          setIsOfflineMode(true);
+          setApiErrorMessage(error.message);
+        }
+
         throw error;
       }
     },
@@ -464,6 +498,18 @@ messages/channels, and managing Google Calendar events.`
         const error = err instanceof Error ? err : new Error('Failed to send message to AI');
         setError(error);
         if (onError) onError(error);
+
+        // Switch to offline mode on key/quota issues
+        const msg = error.message.toLowerCase();
+        if (
+          msg.includes('api key') ||
+          msg.includes('quota') ||
+          msg.includes('rate limit')
+        ) {
+          setIsOfflineMode(true);
+          setApiErrorMessage(error.message);
+        }
+
         setIsLoading(false);
         return '';
       }
@@ -588,6 +634,8 @@ messages/channels, and managing Google Calendar events.`
     messages,
     isLoading,
     error,
+    isOfflineMode,
+    apiErrorMessage,
     sendMessage,
     clearMessages,
     detectIntent,
