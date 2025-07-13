@@ -11,13 +11,34 @@ const app = express();
 const PORT = process.env.PROXY_PORT || 3005;
 
 // CORS configuration
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-production-domain.com' 
-    : 'http://localhost:3004',
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-notion-api-key']
-}));
+/**
+ * Allow requests from the configured production origin **or**
+ * the common local dev ports (3000 & 3004).
+ * If you need additional origins just add them to the ALLOWED_ORIGINS
+ * env-var (comma-separated).
+ */
+const defaultDevOrigins = ['http://localhost:3000', 'http://localhost:3004'];
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) || []
+).concat(
+  process.env.NODE_ENV === 'production'
+    ? process.env.FRONTEND_URL || 'https://your-production-domain.com'
+    : defaultDevOrigins
+);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // allow non-browser tools (e.g. curl, Postman) where origin may be undefined
+      if (!origin) return cb(null, true);
+      return allowedOrigins.includes(origin)
+        ? cb(null, true)
+        : cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-notion-api-key'],
+  })
+);
 
 // Parse JSON request body
 app.use(express.json());
@@ -60,14 +81,22 @@ app.use('/api/notion', async (req, res) => {
     return res.status(response.status).json(response.data);
   } catch (error) {
     console.error('Notion API Proxy Error:', error);
-    
-    // Return appropriate error response
-    const status = error.response?.status || 500;
-    const errorMessage = error.response?.data?.message || 'Internal Server Error';
-    
-    return res.status(status).json({
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+
+    /* ---------- Improved Axios-error handling ---------- */
+    if (axios.isAxiosError(error) && error.response) {
+      // Forward exact status & body from Notion when available
+      return res
+        .status(error.response.status)
+        .json(error.response.data ?? { error: 'Upstream error' });
+    }
+
+    // Fallback – unknown/unexpected error
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      details:
+        process.env.NODE_ENV === 'development'
+          ? error.message ?? 'Unknown error'
+          : undefined,
     });
   }
 });

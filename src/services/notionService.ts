@@ -60,9 +60,22 @@ export interface UpdatePageRequest {
   };
 }
 
+/**
+ * All Notion traffic is routed through a lightweight **local proxy**
+ * (see `server.js`) in order to bypass the browser’s CORS restrictions.
+ * The proxy lives on http://localhost:3005/api/notion by default.
+ *
+ * We therefore:
+ * 1. Point `baseUrl` at the proxy.
+ * 2. Pass the integration token via the custom header **x-notion-api-key**.
+ *    The proxy then re-injects the real `Authorization` and `Notion-Version`
+ *    headers before forwarding to https://api.notion.com.
+ */
+
 class NotionService {
   private apiKey: string;
-  private baseUrl = "https://api.notion.com/v1";
+  private baseUrl = "http://localhost:3005/api/notion";
+  // Version is handled by the proxy – kept for reference only
   private version = "2022-06-28";
 
   constructor(apiKey: string) {
@@ -75,8 +88,8 @@ class NotionService {
     const response = await fetch(url, {
       ...options,
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Notion-Version": this.version,
+        // Send token to proxy; proxy adds real headers before forwarding
+        "x-notion-api-key": this.apiKey,
         "Content-Type": "application/json",
         ...options.headers,
       },
