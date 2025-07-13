@@ -94,38 +94,12 @@ try to provide the most relevant information and assist with any tasks they need
     options: GeminiRequestOptions = {}
   ): Promise<string> {
     try {
-      // Gemini Flash (and many models) now reject the `systemInstruction`
-      // parameter. Instead, we keep the system prompt as the first message
-      // in the chat history so it is always provided in-context.
+      // Determine which system instruction to pass (if any).  We supply it
+      // via the dedicated `systemInstruction` field on `startChat` rather
+      // than inserting a system role message into the history, because the
+      // Gemini API requires the first history item to have role `user`.
       const effectiveSystemInstruction =
         options.systemInstruction?.trim() || this.systemInstruction.trim();
-
-      if (effectiveSystemInstruction) {
-        if (
-          this.conversationHistory.length === 0 ||
-          this.conversationHistory[0].role !== 'system'
-        ) {
-          // Prepend new system message
-          this.conversationHistory.unshift({
-            role: 'system',
-            parts: [{ text: effectiveSystemInstruction }],
-          });
-        } else {
-          // Update existing system message if it changed
-          const currentText = this.conversationHistory[0].parts[0]?.text;
-          if (currentText !== effectiveSystemInstruction) {
-            this.conversationHistory[0].parts = [
-              { text: effectiveSystemInstruction },
-            ];
-          }
-        }
-      }
-
-      // Add user message to history
-      this.addMessageToHistory({
-        role: 'user',
-        parts: [{ text: message }],
-      });
 
       // Prepare messages for Gemini API
       const chat = this.model.startChat({
@@ -134,7 +108,10 @@ try to provide the most relevant information and assist with any tasks they need
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxOutputTokens ?? 1024,
         },
-        // systemInstruction is now supplied via the first `system` message
+        // supply system instruction explicitly (if present)
+        ...(effectiveSystemInstruction && {
+          systemInstruction: effectiveSystemInstruction,
+        }),
         tools: options.tools,
       });
 
@@ -143,6 +120,11 @@ try to provide the most relevant information and assist with any tasks they need
       const response = result.response;
       const responseText = response.text();
 
+      // Persist the turn in local history (user then model)
+      this.addMessageToHistory({
+        role: 'user',
+        parts: [{ text: message }],
+      });
       // Add model's response to history
       this.addMessageToHistory({
         role: 'model',

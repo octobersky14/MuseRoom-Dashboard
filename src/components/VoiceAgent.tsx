@@ -141,44 +141,81 @@ export function VoiceAgent({
         timestamp: new Date(),
         isUser: true,
       };
+      
+      // Add user message to conversation
       setMessages([userMessage]);
       setCurrentTranscript("");
       setIsProcessing(true);
       
-      // Process with AI Assistant
-      aiAssistant.sendMessage(initialPrompt).then((response) => {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          text: response,
-          timestamp: new Date(),
-          isUser: false,
-          intent: aiAssistant.lastDetectedIntent?.intent,
-          intentConfidence: aiAssistant.lastDetectedIntent?.confidence,
-          source: aiAssistant.lastDetectedIntent?.intent === 'notion' ? 'notion' : 'gemini'
-        };
-        setMessages((prev) => [...prev, aiMessage]);
-        setIsProcessing(false);
-        
-        if (onPromptHandled) onPromptHandled();
-      });
+      // Process with AI Assistant - using a standard user message approach
+      // instead of trying to use system instructions which cause errors
+      processUserInput(initialPrompt);
+      
+      // Notify parent component that prompt was handled
+      if (onPromptHandled) onPromptHandled();
     } else {
-      // If there is no initial prompt, show the greeting only
+      // If there is no initial prompt, show the greeting only WITHOUT calling the AI API
       const welcomeText = generateWelcomeGreeting();
       const welcomeMessage: Message = {
         id: "welcome",
         text: welcomeText,
         timestamp: new Date(),
         isUser: false,
+        source: "gemini" // Mark as coming from assistant without API call
       };
+      
+      // Just set the welcome message directly without AI processing
       setMessages([welcomeMessage]);
-      // Speak the welcome message after a short delay to ensure everything is loaded
+      
+      // Speak the welcome message after a short delay using direct speech synthesis
+      // to avoid triggering Gemini API calls for the welcome message
       const speakWelcome = async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
         if (!isMuted) {
           try {
-            await aiAssistant.speakMessage(welcomeText);
+            // Use direct speech synthesis without going through AI pipeline
+            if (useElevenLabs && elevenLabsApiKey) {
+              // Use ElevenLabs directly for the welcome message
+              const audio = new Audio();
+              const response = await axios.post(
+                `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
+                {
+                  text: welcomeText,
+                  model_id: "eleven_multilingual_v2",
+                  voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.75,
+                    style: 0.0,
+                    use_speaker_boost: true,
+                  },
+                },
+                {
+                  headers: {
+                    'xi-api-key': elevenLabsApiKey,
+                    'Content-Type': 'application/json',
+                  },
+                  responseType: 'arraybuffer',
+                }
+              );
+              
+              const blob = new Blob([response.data], { type: 'audio/mpeg' });
+              const url = URL.createObjectURL(blob);
+              audio.src = url;
+              await audio.play();
+              
+              audio.onended = () => {
+                URL.revokeObjectURL(url);
+              };
+            } else {
+              // Fallback to browser's text-to-speech
+              const utterance = new SpeechSynthesisUtterance(welcomeText);
+              window.speechSynthesis.speak(utterance);
+            }
           } catch (error) {
             console.error("Error speaking welcome message:", error);
+            // Fallback to browser's text-to-speech
+            const utterance = new SpeechSynthesisUtterance(welcomeText);
+            window.speechSynthesis.speak(utterance);
           }
         }
       };
@@ -224,11 +261,24 @@ export function VoiceAgent({
 
       try {
         // Detect intent for visual indicator
-        const intentResult = await aiAssistant.detectIntent(userInput);
-        setLastIntent(intentResult.intent);
+        let intentResult;
+        try {
+          intentResult = await aiAssistant.detectIntent(userInput);
+          setLastIntent(intentResult.intent);
+        } catch (intentError) {
+          console.warn("Intent detection failed, using fallback:", intentError);
+          intentResult = { intent: 'general', confidence: 0.5 };
+          setLastIntent('general');
+        }
 
         // Process with AI Assistant
-        const response = await aiAssistant.sendMessage(userInput);
+        let response;
+        try {
+          response = await aiAssistant.sendMessage(userInput);
+        } catch (err) {
+          console.error("Error from AI service:", err);
+          response = "I'm sorry, I encountered an issue processing your request. Please try again.";
+        }
 
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -343,12 +393,51 @@ export function VoiceAgent({
 
     if (!isMuted) {
       try {
-        await aiAssistant.speakMessage(welcomeText);
+        // Use direct speech synthesis to avoid Gemini API calls
+        if (useElevenLabs && elevenLabsApiKey) {
+          const audio = new Audio();
+          const response = await axios.post(
+            `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
+            {
+              text: welcomeText,
+              model_id: "eleven_multilingual_v2",
+              voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+                style: 0.0,
+                use_speaker_boost: true,
+              },
+            },
+            {
+              headers: {
+                'xi-api-key': elevenLabsApiKey,
+                'Content-Type': 'application/json',
+              },
+              responseType: 'arraybuffer',
+            }
+          );
+          
+          const blob = new Blob([response.data], { type: 'audio/mpeg' });
+          const url = URL.createObjectURL(blob);
+          audio.src = url;
+          await audio.play();
+          
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+          };
+        } else {
+          // Fallback to browser's text-to-speech
+          const utterance = new SpeechSynthesisUtterance(welcomeText);
+          window.speechSynthesis.speak(utterance);
+        }
       } catch (error) {
         console.error("Error speaking manual welcome message:", error);
+        // Fallback to browser's text-to-speech
+        const utterance = new SpeechSynthesisUtterance(welcomeText);
+        window.speechSynthesis.speak(utterance);
       }
     }
-  }, [isMuted, aiAssistant]);
+  }, [isMuted, useElevenLabs, elevenLabsApiKey, selectedVoice]);
 
   // Expose functions globally so the GIF and console can trigger them
   React.useEffect(() => {
