@@ -2,14 +2,13 @@ import { GoogleGenerativeAI, GenerativeModel, Part, Tool } from '@google/generat
 
 // Define interfaces for Gemini API
 interface GeminiMessage {
-  role: 'user' | 'model' | 'system';
+  role: 'user' | 'model';
   parts: Part[];
 }
 
 interface GeminiRequestOptions {
   temperature?: number;
   maxOutputTokens?: number;
-  systemInstruction?: string;
   tools?: Tool[];
 }
 
@@ -94,24 +93,13 @@ try to provide the most relevant information and assist with any tasks they need
     options: GeminiRequestOptions = {}
   ): Promise<string> {
     try {
-      // Determine which system instruction to pass (if any).  We supply it
-      // via the dedicated `systemInstruction` field on `startChat` rather
-      // than inserting a system role message into the history, because the
-      // Gemini API requires the first history item to have role `user`.
-      const effectiveSystemInstruction =
-        options.systemInstruction?.trim() || this.systemInstruction.trim();
-
-      // Prepare messages for Gemini API
+      // Prepare messages for Gemini API - we don't use systemInstruction parameter anymore
       const chat = this.model.startChat({
         history: this.prepareMessages(),
         generationConfig: {
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxOutputTokens ?? 1024,
         },
-        // supply system instruction explicitly (if present)
-        ...(effectiveSystemInstruction && {
-          systemInstruction: effectiveSystemInstruction,
-        }),
         tools: options.tools,
       });
 
@@ -145,8 +133,13 @@ try to provide the most relevant information and assist with any tasks they need
     userQuery: string,
     params: NotionActionParams
   ): Promise<string> {
-    // Create a structured prompt for Notion actions
+    // Create a structured prompt for Notion actions that includes system instructions
     const structuredPrompt = `
+${this.systemInstruction}
+
+When the user asks about Notion, use the Notion MCP tool to interact with their Notion workspace.
+Format your responses in a clear, readable way.
+
 User is asking about Notion: "${userQuery}"
 
 Please use the Notion MCP tool to ${params.action} a ${params.resourceType}${
@@ -157,11 +150,8 @@ ${params.data ? `Use the following data: ${JSON.stringify(params.data, null, 2)}
 Respond with the result in a user-friendly format.
     `;
 
-    // Send the structured prompt to Gemini
-    return this.sendMessage(structuredPrompt, {
-      // Include system instruction that encourages Gemini to use Notion MCP
-      systemInstruction: `${this.systemInstruction} When the user asks about Notion, use the Notion MCP tool to interact with their Notion workspace. Format your responses in a clear, readable way.`,
-    });
+    // Send the structured prompt to Gemini without systemInstruction parameter
+    return this.sendMessage(structuredPrompt);
   }
 
   /**
@@ -171,8 +161,12 @@ Respond with the result in a user-friendly format.
     userQuery: string,
     params: DiscordActionParams
   ): Promise<string> {
-    // Create a structured prompt for Discord actions
+    // Create a structured prompt for Discord actions that includes system instructions
     const structuredPrompt = `
+${this.systemInstruction}
+
+When the user asks about Discord, help them interact with their Discord channels and messages.
+
 User is asking about Discord: "${userQuery}"
 
 I need to ${params.action} ${
@@ -205,8 +199,12 @@ Respond with the result in a user-friendly format.
     userQuery: string,
     params: CalendarActionParams
   ): Promise<string> {
-    // Create a structured prompt for Calendar actions
+    // Create a structured prompt for Calendar actions that includes system instructions
     const structuredPrompt = `
+${this.systemInstruction}
+
+When the user asks about Google Calendar, help them manage their events and schedule.
+
 User is asking about their Google Calendar: "${userQuery}"
 
 I need to ${params.action} ${
@@ -243,7 +241,11 @@ Respond with the result in a user-friendly format.
     params?: Record<string, any>;
   }> {
     try {
+      // Include intent classification instructions in the prompt itself
+      // instead of using systemInstruction parameter
       const prompt = `
+You are an intent classification system. Analyze the user's message and respond ONLY with a valid JSON object containing the intent classification. Do not include any other text.
+
 Analyze the following user message and determine the user's intent.
 User message: "${message}"
 
@@ -272,7 +274,6 @@ Example response:
       `;
 
       const response = await this.sendMessage(prompt, {
-        systemInstruction: "You are an intent classification system. Analyze the user's message and respond ONLY with a valid JSON object containing the intent classification. Do not include any other text.",
         temperature: 0.1, // Low temperature for more deterministic results
       });
 
@@ -302,6 +303,15 @@ Example response:
    */
   public async processMessage(message: string): Promise<string> {
     try {
+      // Create a message that includes system instructions
+      const enhancedMessage = `
+${this.systemInstruction}
+
+User message: "${message}"
+
+Please respond to the user's message in a helpful, concise, and friendly manner.
+      `;
+      
       // Detect the user's intent
       const intentResult = await this.detectIntent(message);
       
@@ -343,8 +353,8 @@ Example response:
           break;
       }
       
-      // Default to general message handling
-      return this.sendMessage(message);
+      // Default to general message handling with enhanced message
+      return this.sendMessage(enhancedMessage);
     } catch (error) {
       console.error("Error processing message", error);
       return "I encountered an error processing your request. Please try again.";
@@ -355,6 +365,20 @@ Example response:
    * Helper method to prepare messages for Gemini API
    */
   private prepareMessages(): GeminiMessage[] {
+    // If we have no history yet, initialize with system instruction as first user message
+    if (this.conversationHistory.length === 0 && this.systemInstruction) {
+      this.addMessageToHistory({
+        role: 'user',
+        parts: [{ text: this.systemInstruction }]
+      });
+      
+      // Add a model response to maintain the conversation flow
+      this.addMessageToHistory({
+        role: 'model',
+        parts: [{ text: "I'm ready to assist you with Notion, Discord, and Google Calendar. How can I help you today?" }]
+      });
+    }
+    
     // Return only the most recent messages to stay within context limits
     return this.conversationHistory.slice(-this.maxHistoryLength);
   }
