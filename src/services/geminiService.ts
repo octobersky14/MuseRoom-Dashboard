@@ -278,12 +278,18 @@ Example response:
       });
 
       try {
-        // Try to parse the response as JSON
-        const parsedResponse = JSON.parse(response.trim());
+        // Extract a pure JSON string from the model response (it might be wrapped
+        // in markdown fences such as ```json ... ```)
+        const jsonText = this.extractJson(response);
+
+        // Try to parse the extracted string as JSON
+        const parsedResponse = JSON.parse(jsonText);
         return parsedResponse;
       } catch (e) {
         // If parsing fails, return a default response
-        console.error("Failed to parse intent detection response", e);
+        console.error("Failed to parse intent detection response");
+        console.error("Raw response from model:", response);
+        console.error(e);
         return {
           intent: 'general',
           confidence: 0.5,
@@ -296,6 +302,30 @@ Example response:
         confidence: 0.5,
       };
     }
+  }
+
+  /**
+   * Extract JSON from a Gemini response that may be wrapped in markdown
+   * code-fences.  Returns the best-guess JSON string (trimmed).
+   */
+  private extractJson(responseText: string): string {
+    const trimmed = responseText.trim();
+
+    // Try ```json ... ``` or ``` ...
+    const fencedMatch = trimmed.match(/```(?:json)?\\s*([\\s\\S]*?)```/i);
+    if (fencedMatch && fencedMatch[1]) {
+      return fencedMatch[1].trim();
+    }
+
+    // Fallback: take substring from first { to last }
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return trimmed.substring(firstBrace, lastBrace + 1).trim();
+    }
+
+    // As a last resort, return the original text
+    return trimmed;
   }
 
   /**
