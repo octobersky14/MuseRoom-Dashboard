@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { VoiceAgent } from "./components/VoiceAgent";
 import { DiscordMessages } from "./components/DiscordMessages";
-import { NotionWorkspace } from "./components/NotionWorkspace";
+import { NotionWorkspaceEnhanced } from "./components/NotionWorkspaceEnhanced";
 import { Toaster } from "./components/ui/toaster";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
@@ -336,7 +336,7 @@ function App() {
 
                     {/* Notion Workspace Section */}
                     <div className="w-full">
-                      <NotionWorkspace className="mx-auto" />
+                      <NotionWorkspaceEnhanced className="mx-auto" />
                     </div>
                   </div>
                 ) : (
@@ -391,7 +391,7 @@ function App() {
                       </TabsContent>
 
                       <TabsContent value="notion" className="mt-0 p-0">
-                        <NotionWorkspace />
+                        <NotionWorkspaceEnhanced />
                       </TabsContent>
                     </Tabs>
                   </Card>
