@@ -5,7 +5,7 @@ import { Volume2, VolumeX, Settings, Loader2 } from "lucide-react";
 import { useToast } from "./ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
-import { useVoiceAssistant } from "../../useVoiceAssistant";
+import { useAIAssistant } from "../hooks/useAIAssistant";
 import useDirectSpeechRecognition, {
   RecognitionStatus,
 } from "../../useDirectSpeechRecognition";
@@ -15,6 +15,9 @@ interface Message {
   text: string;
   timestamp: Date;
   isUser: boolean;
+  intent?: string;
+  intentConfidence?: number;
+  source?: 'gemini' | 'notion' | 'discord' | 'calendar';
 }
 
 interface ElevenLabsVoice {
@@ -50,32 +53,39 @@ export function VoiceAgent({
   const [isMuted, setIsMuted] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [textInput, setTextInput] = useState("");
+  const [lastIntent, setLastIntent] = useState<
+    "notion" | "discord" | "calendar" | "general" | null
+  >(null);
 
   const { toast } = useToast();
 
   // Use the sophisticated direct speech recognition hook
   const speechRecognition = useDirectSpeechRecognition();
 
-  // Use the advanced voice assistant hook with ElevenLabs integration
-  const voiceAssistant = useVoiceAssistant({
-    enabled: isVoiceEnabled && !isMuted,
-    onTranscript: handleUserTranscript,
-    circleElementRef: null, // Will be handled by the main GIF
-    muted: isMuted,
+  // Use the AI assistant hook with Gemini, Notion, and ElevenLabs integration
+  const aiAssistant = useAIAssistant({
+    geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY,
+    notionApiKey: import.meta.env.VITE_NOTION_API_KEY,
     elevenLabsApiKey: useElevenLabs ? elevenLabsApiKey : "",
-    elevenLabsVoiceId: selectedVoice,
-    waveformCanvas: null, // Disabled for performance - using simple GIF speed changes instead
-    onSpeakingChange: (speaking) => {
-      console.log("Assistant speaking:", speaking);
-    },
+    selectedVoice: selectedVoice,
+    useElevenLabs: useElevenLabs,
+    systemInstruction: `You are an AI assistant integrated into the MuseRoom Dashboard. 
+    You can help users with Notion, Discord, and Google Calendar. 
+    You have direct access to the user's Notion workspace through a secure API.
+    When users ask about their Notion workspace, you can fetch, create, and update content.
+    Be helpful, concise, and friendly.`,
     onError: (error) => {
-      console.error("Voice Assistant Error:", error);
+      console.error("AI Assistant Error:", error);
       toast({
-        title: "Voice Assistant Error",
-        description: error,
+        title: "AI Assistant Error",
+        description: error.message,
         variant: "destructive",
       });
     },
+    onIntentDetected: (intent, confidence, action) => {
+      console.log(`Intent detected: ${intent} (${confidence}) - Action: ${action}`);
+      setLastIntent(intent as "notion" | "discord" | "calendar" | "general");
+    }
   });
 
   // Handle user speech transcript
@@ -134,18 +144,21 @@ export function VoiceAgent({
       setMessages([userMessage]);
       setCurrentTranscript("");
       setIsProcessing(true);
-      processCommand(initialPrompt).then((response) => {
+      
+      // Process with AI Assistant
+      aiAssistant.sendMessage(initialPrompt).then((response) => {
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
           text: response,
           timestamp: new Date(),
           isUser: false,
+          intent: aiAssistant.lastDetectedIntent?.intent,
+          intentConfidence: aiAssistant.lastDetectedIntent?.confidence,
+          source: aiAssistant.lastDetectedIntent?.intent === 'notion' ? 'notion' : 'gemini'
         };
         setMessages((prev) => [...prev, aiMessage]);
         setIsProcessing(false);
-        if (!isMuted && voiceAssistant && voiceAssistant.speak) {
-          voiceAssistant.speak(response);
-        }
+        
         if (onPromptHandled) onPromptHandled();
       });
     } else {
@@ -161,9 +174,9 @@ export function VoiceAgent({
       // Speak the welcome message after a short delay to ensure everything is loaded
       const speakWelcome = async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
-        if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+        if (!isMuted) {
           try {
-            await voiceAssistant.speak(welcomeText);
+            await aiAssistant.speakMessage(welcomeText);
           } catch (error) {
             console.error("Error speaking welcome message:", error);
           }
@@ -210,21 +223,28 @@ export function VoiceAgent({
       setCurrentTranscript("");
 
       try {
-        // Process user command and generate response
-        const response = await processCommand(userInput);
+        // Detect intent for visual indicator
+        const intentResult = await aiAssistant.detectIntent(userInput);
+        setLastIntent(intentResult.intent);
+
+        // Process with AI Assistant
+        const response = await aiAssistant.sendMessage(userInput);
 
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
           text: response,
           timestamp: new Date(),
           isUser: false,
+          intent: intentResult.intent,
+          intentConfidence: intentResult.confidence,
+          source: intentResult.intent === 'notion' ? 'notion' : 'gemini'
         };
 
         setMessages((prev) => [...prev, aiMessage]);
 
-        // Speak the response using the voice assistant
+        // Speak the response
         if (!isMuted && response) {
-          await voiceAssistant.speak(response);
+          await aiAssistant.speakMessage(response);
         }
       } catch (error) {
         console.error("Error processing user input:", error);
@@ -241,7 +261,7 @@ export function VoiceAgent({
         setMessages((prev) => [...prev, aiMessage]);
 
         if (!isMuted) {
-          await voiceAssistant.speak(errorMessage);
+          await aiAssistant.speakMessage(errorMessage);
         }
 
         toast({
@@ -253,99 +273,8 @@ export function VoiceAgent({
         setIsProcessing(false);
       }
     },
-    [isMuted, voiceAssistant, toast]
+    [isMuted, aiAssistant, toast]
   );
-
-  const processCommand = async (command: string): Promise<string> => {
-    console.log("Processing command:", command);
-
-    const lowerCommand = command.toLowerCase();
-
-    // Greeting responses
-    if (lowerCommand.includes("hello") || lowerCommand.includes("hi")) {
-      return "Hello! I'm your AI assistant for MuseRoom. I can help with Discord messages, page navigation, Notion tasks, project management, and much more. What would you like me to help you with?";
-    }
-
-    // Discord-related commands
-    if (
-      lowerCommand.includes("discord") &&
-      (lowerCommand.includes("read") || lowerCommand.includes("messages"))
-    ) {
-      return await handleDiscordCommand(command);
-    }
-
-    // Navigation commands
-    if (
-      lowerCommand.includes("navigate") ||
-      lowerCommand.includes("go to") ||
-      lowerCommand.includes("show")
-    ) {
-      if (
-        lowerCommand.includes("discord") ||
-        lowerCommand.includes("messages")
-      ) {
-        return "I'll navigate you to the Discord messages tab to view your latest messages and summaries.";
-      }
-      if (
-        lowerCommand.includes("notion") ||
-        lowerCommand.includes("workspace") ||
-        lowerCommand.includes("notes") ||
-        lowerCommand.includes("tasks")
-      ) {
-        return "I'll navigate you to the Notion workspace where you can manage your notes, tasks, and projects.";
-      }
-      return "I can help you navigate to different sections of the dashboard. Try saying 'show discord messages', 'show notion workspace', or 'go to settings'.";
-    }
-
-    // Notion integration
-    if (
-      lowerCommand.includes("notion") ||
-      lowerCommand.includes("note") ||
-      lowerCommand.includes("task")
-    ) {
-      return "I can help you access your company's Notion workspace! You can configure your workspace URL in the Notion tab, and I'll provide quick links to all your team pages. Say 'show notion workspace' to get started.";
-    }
-
-    // Help and capabilities
-    if (
-      lowerCommand.includes("help") ||
-      lowerCommand.includes("what can you do")
-    ) {
-      return "I'm your unified AI assistant! I can help with: Discord message management and summaries, Notion workspace for notes and tasks, page navigation, project management, answering questions, and general assistance. Try saying 'show discord messages', 'show notion workspace', or ask me any question!";
-    }
-
-    // Project management
-    if (
-      lowerCommand.includes("project") ||
-      lowerCommand.includes("manage") ||
-      lowerCommand.includes("organize")
-    ) {
-      return "I can help you manage your projects and workflow. I can assist with organizing tasks, tracking progress, and connecting with your project management tools.";
-    }
-
-    // General AI assistance
-    if (
-      lowerCommand.includes("analyze") ||
-      lowerCommand.includes("summarize") ||
-      lowerCommand.includes("explain")
-    ) {
-      return "I can analyze and summarize content for you. Whether it's Discord conversations, project updates, or general information, I'm here to help break it down and provide insights.";
-    }
-
-    // Default response - more comprehensive than before
-    return `I heard you say: "${command}". I'm your unified AI assistant and I can help with Discord messages, Notion workspace, page navigation, project management, and much more. Try asking me to "show Discord messages", "show notion workspace", or "what can you do?" to get started.`;
-  };
-
-  const handleDiscordCommand = async (command: string): Promise<string> => {
-    try {
-      // This would integrate with your Discord API
-      // For now, return a mock response
-      return "I would fetch the latest Discord messages for you. This feature is being implemented to connect with your Discord channels and provide message summaries.";
-    } catch (error) {
-      console.error("Discord command error:", error);
-      return "I'm sorry, I couldn't fetch the Discord messages right now. Please check your connection and try again.";
-    }
-  };
 
   // Add debouncing to prevent rapid clicking
   const lastToggleRef = React.useRef(0);
@@ -363,7 +292,7 @@ export function VoiceAgent({
 
     if (speechRecognition.isListening) {
       speechRecognition.stopListening();
-      voiceAssistant.stop();
+      aiAssistant.stopSpeaking();
       setIsVoiceEnabled(false);
     } else {
       // Enable voice assistant if not already enabled
@@ -377,19 +306,19 @@ export function VoiceAgent({
       }
       speechRecognition.startListening();
     }
-  }, [speechRecognition, voiceAssistant, isVoiceEnabled]);
+  }, [speechRecognition, aiAssistant, isVoiceEnabled]);
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
     if (!isMuted) {
-      voiceAssistant.interruptSpeak();
+      aiAssistant.stopSpeaking();
     }
   };
 
   const toggleVoiceEnabled = () => {
     setIsVoiceEnabled(!isVoiceEnabled);
     if (isVoiceEnabled) {
-      voiceAssistant.stop();
+      aiAssistant.stopSpeaking();
       speechRecognition.stopListening();
     }
   };
@@ -412,14 +341,14 @@ export function VoiceAgent({
     const welcomeText = generateWelcomeGreeting();
     console.log("Manually triggering welcome greeting:", welcomeText);
 
-    if (!isMuted && voiceAssistant && voiceAssistant.speak) {
+    if (!isMuted) {
       try {
-        await voiceAssistant.speak(welcomeText);
+        await aiAssistant.speakMessage(welcomeText);
       } catch (error) {
         console.error("Error speaking manual welcome message:", error);
       }
     }
-  }, [isMuted, voiceAssistant]);
+  }, [isMuted, aiAssistant]);
 
   // Expose functions globally so the GIF and console can trigger them
   React.useEffect(() => {
@@ -452,7 +381,7 @@ export function VoiceAgent({
     const container = document.querySelector(".ai-assistant-container");
 
     if (container) {
-      if (voiceAssistant.isSpeaking()) {
+      if (aiAssistant.isSpeaking) {
         // Add speaking state class for purple pulse effect
         container.classList.add("speaking-active");
         container.classList.remove("listening-active");
@@ -461,7 +390,7 @@ export function VoiceAgent({
         container.classList.remove("speaking-active");
       }
     }
-  }, [voiceAssistant.isSpeaking()]);
+  }, [aiAssistant.isSpeaking]);
 
   // Efficient GIF animation state management (no infinite loops)
   React.useEffect(() => {
@@ -479,7 +408,7 @@ export function VoiceAgent({
     );
 
     // Apply the correct class based on current state (no animation frames needed)
-    if (voiceAssistant.isSpeaking()) {
+    if (aiAssistant.isSpeaking) {
       gif.classList.add("ai-assistant-gif-speaking");
     } else if (isProcessing) {
       gif.classList.add("ai-assistant-gif-normal");
@@ -490,7 +419,7 @@ export function VoiceAgent({
     }
 
     // No cleanup needed - just a simple class update
-  }, [speechRecognition.isListening, isProcessing, voiceAssistant.isSpeaking]);
+  }, [speechRecognition.isListening, isProcessing, aiAssistant.isSpeaking]);
 
   return (
     <>
@@ -533,6 +462,27 @@ export function VoiceAgent({
             aria-label="Conversation messages"
             aria-live="polite"
           >
+            {/* Intent badge */}
+            {lastIntent && (
+              <div className="flex justify-center mb-4">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    lastIntent === "notion"
+                      ? "bg-blue-600/30 text-blue-300"
+                      : lastIntent === "discord"
+                      ? "bg-green-600/30 text-green-300"
+                      : lastIntent === "calendar"
+                      ? "bg-yellow-600/30 text-yellow-300"
+                      : "bg-purple-600/30 text-purple-300"
+                  }`}
+                >
+                  {lastIntent === "general"
+                    ? "General"
+                    : lastIntent.charAt(0).toUpperCase() + lastIntent.slice(1)}
+                </span>
+              </div>
+            )}
+            
             <AnimatePresence>
               {messages.map((message) => (
                 <motion.div
@@ -549,14 +499,38 @@ export function VoiceAgent({
                     className={`max-w-xs lg:max-w-md px-5 py-3 rounded-2xl shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 ${
                       message.isUser
                         ? "bg-gradient-to-br from-blue-600 to-purple-700 text-white border border-blue-400/50"
+                        : message.source === "notion"
+                        ? "bg-gradient-to-br from-blue-700/95 to-blue-900/95 text-gray-100 border border-blue-500/50"
                         : "bg-gradient-to-br from-gray-700/95 to-gray-800/95 text-gray-100 border border-gray-600/50"
                     }`}
                   >
                     {!message.isUser && (
                       <div className="flex items-center space-x-2 mb-2">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                        <span className="text-xs font-medium text-purple-400">
-                          Assistant
+                        <div className={`w-2 h-2 ${
+                          message.source === "notion" 
+                            ? "bg-blue-400" 
+                            : message.source === "discord"
+                            ? "bg-green-400"
+                            : message.source === "calendar"
+                            ? "bg-yellow-400"
+                            : "bg-purple-400"
+                        } rounded-full`}></div>
+                        <span className={`text-xs font-medium ${
+                          message.source === "notion" 
+                            ? "text-blue-400" 
+                            : message.source === "discord"
+                            ? "text-green-400"
+                            : message.source === "calendar"
+                            ? "text-yellow-400"
+                            : "text-purple-400"
+                        }`}>
+                          {message.source === "notion" 
+                            ? "Notion Assistant" 
+                            : message.source === "discord"
+                            ? "Discord Assistant"
+                            : message.source === "calendar"
+                            ? "Calendar Assistant"
+                            : "Assistant"}
                         </span>
                       </div>
                     )}

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { VoiceAgent } from "./components/VoiceAgent";
 import { DiscordMessages } from "./components/DiscordMessages";
 import { NotionWorkspaceEnhanced } from "./components/NotionWorkspaceEnhanced";
+import NotionIntegrationTest from "./components/NotionIntegrationTest";
 import { Toaster } from "./components/ui/toaster";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
@@ -391,7 +392,13 @@ function App() {
                       </TabsContent>
 
                       <TabsContent value="notion" className="mt-0 p-0">
-                        <NotionWorkspaceEnhanced />
+                        <>
+                          <NotionWorkspaceEnhanced />
+                          {/* Notion API connectivity check component */}
+                          <div className="mt-6">
+                            <NotionIntegrationTest />
+                          </div>
+                        </>
                       </TabsContent>
                     </Tabs>
                   </Card>

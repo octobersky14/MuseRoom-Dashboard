@@ -7,6 +7,8 @@ A modern voice-enabled web application that allows you to interact with Discord 
 - 🎤 **Voice Recognition**: Talk to the AI using your microphone
 - 🔊 **Text-to-Speech**: AI responds with premium ElevenLabs voices or browser TTS
 - 📡 **Discord Integration**: Read and send summaries of Discord messages via n8n webhook
+- 📄 **Notion Integration**: Search, read, and update pages & databases via Notion MCP (uses a local CORS proxy)
+- 📅 **Google Calendar (beta)**: List and manage events with natural-language commands
 - 🎨 **Modern UI**: Beautiful, responsive design with Tailwind CSS
 - 📱 **Real-time Updates**: Live conversation history and message display
 - 🌓 **Dark/Light Mode**: Toggle between themes
@@ -21,7 +23,12 @@ A modern voice-enabled web application that allows you to interact with Discord 
 - **UI Components**: Radix UI primitives
 - **Animation**: Framer Motion
 - **HTTP Client**: Axios and Fetch API
-- **Discord Integration**: n8n webhook automation with OpenAI analysis
+- **AI Engine**: Gemini 1.5 Flash (`@google/generative-ai`)
+- **Integrations**:  
+  • **Notion MCP** (open-source Model-Context-Protocol server)  
+  • **Discord** via n8n webhook automation  
+  • **Google Calendar** (OAuth)  
+- **Backend Utility**: Express CORS proxy on `localhost:3005` for Notion API
 
 ## Quick Start
 
@@ -44,6 +51,14 @@ A modern voice-enabled web application that allows you to interact with Discord 
    ```
 
 4. **Open your browser** and navigate to `http://localhost:3000`
+
+>  💡 If you plan to use Notion features you must also:
+>
+> • **Run the Notion MCP server** (see NOTION_MCP_SETUP.md)  
+> • **Start the local CORS proxy**  
+>   ```bash
+>   node server.js        # starts proxy on http://localhost:3005
+>   ``` 
 
 ## Voice Commands
 
@@ -144,6 +159,11 @@ VITE_ELEVENLABS_API_KEY=your_api_key_here
 
 # Discord Webhook Configuration
 VITE_DISCORD_WEBHOOK_URL=https://hadleycarr04.app.n8n.cloud/webhook/discord-message
+
+# Notion
+VITE_NOTION_API_KEY=your_notion_internal_integration_token
+# Local proxy (default 3005 – change if you modify server.js)
+VITE_NOTION_PROXY_URL=http://localhost:3005/api/notion
 
 # Application Configuration
 VITE_APP_NAME=MuseRoom Voice Agent

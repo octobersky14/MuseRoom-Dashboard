@@ -1,158 +1,162 @@
-# Fixing CORS with a Local Notion API Proxy  
-_MuseRoom Dashboard — developer guide_
+# CORS Proxy for Notion API  
+*A practical guide for MuseRoom Dashboard developers*
 
 ---
 
-## 1. What is CORS and why is it blocking me?
+## 1. Why a CORS proxy?
 
-• **CORS** (Cross-Origin Resource Sharing) is a browser security rule that stops JavaScript on <http://localhost:3004> from talking directly to a server that lives on a **different origin** (for example `https://api.notion.com`).  
-• The Notion REST API does **not** add the special `Access-Control-Allow-Origin` header that would permit your browser request, so the browser cancels the call and prints the familiar error:
+1. **Same-Origin Policy**  
+   Browsers block JavaScript running on `http://localhost:3000` from reading responses that originate from `https://api.notion.com` unless the server explicitly allows it with the `Access-Control-Allow-Origin` header.
 
-```
-Access to fetch at 'https://api.notion.com/v1/search' from origin 'http://localhost:3004'
-has been blocked by CORS policy
-```
+2. **Notion API limitation**  
+   The public Notion API **does not** send CORS headers, so every direct `fetch("https://api.notion.com/v1/...")` from the browser fails with:
 
-> Good news: servers can still talk to each other freely.  
-> We just need a tiny server running on **our origin** that forwards (or “proxies”) the request to Notion and then gives the result back to the browser.
+   ```
+   Access to fetch at 'https://api.notion.com/v1/pages'
+   from origin 'http://localhost:3000' has been blocked by CORS policy
+   ```
 
----
+3. **Solution**  
+   Run a tiny server on your machine that:
+   • Receives the browser request  
+   • Adds the required `Authorization`, `Notion-Version`, and CORS headers  
+   • Forwards the request to Notion  
+   • Streams the response back to the browser
 
-## 2. How the proxy works (30-second tour)
-
-1. Your React app sends a request to `http://localhost:3005/api/notion/...` (same origin → no CORS).
-2. The **local proxy server** receives the request, attaches your Notion API key and the required `Notion-Version` header.
-3. The proxy forwards everything to `https://api.notion.com/v1/...`.
-4. When Notion replies, the proxy immediately passes the JSON back to the browser — with permissive CORS headers.
-5. The browser is happy, you get data, no security rules broken.
-
----
-
-## 3. One-time setup
-
-### 3.1 Install dependencies
-
-```bash
-npm install express cors axios dotenv
-```
-
-These packages are already listed in `package.json`; the command above is only needed if they are not yet in `node_modules`.
-
-### 3.2 Project files
-
-```
-/
-├── server.js                 # Runs the proxy during local development
-└── src/api/notionProxy.js    # Pure proxy handler (also deployable serverlessly)
-```
-
-Copy the provided files (or generate them with the scaffold) into your repo root exactly as shown above.
-
-### 3.3 Environment variables
-
-Create a `.env` in the project root:
-
-```
-# Notion integration
-NOTION_API_KEY=secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Proxy settings
-PROXY_PORT=3005
-FRONTEND_URL=http://localhost:3004
-VITE_NOTION_PROXY_URL=http://localhost:3005/api/notion
-```
-
-*`NOTION_API_KEY` is your **internal integration token** from Notion → keep it private.*
+   This is the **CORS proxy** shipped in `server.js`.
 
 ---
 
-## 4. Starting everything in development
+## 2. How the proxy works
 
-Open **two** terminals or run concurrently:
-
-```bash
-# Terminal ① – start the proxy
-npm run proxy         # or: node server.js
-
-# Terminal ② – start the React/Vite dev server
-npm run dev
+```text
++-------------+              +----------------+              +------------------+
+| React App   |  fetch /api  |  Local Proxy   |  fetch       |  Notion REST API |
+| localhost   +----------->  | localhost:3005 +----------->  | api.notion.com   |
+| :3000/3001  |              | (Express)      |              |                  |
++-------------+              +----------------+              +------------------+
+         ^                                                                 |
+         |                CORS headers injected (<-- allow *)              |
+         +-----------------------------------------------------------------+
 ```
 
-You should see in terminal ①:
-
-```
-Notion API proxy server running on http://localhost:3005
-```
+1. **Incoming** – Browser calls `http://localhost:3005/api/notion/v1/pages/...`
+2. **Inject** – Proxy adds:
+   ```http
+   Authorization: Bearer <NOTION_TOKEN>
+   Notion-Version: 2022-06-28
+   Access-Control-Allow-Origin: *
+   ```
+3. **Forward** – Makes the real request to `https://api.notion.com/v1/...`
+4. **Return** – Streams JSON back to the browser, CORS satisfied.
 
 ---
 
-## 5. Using the proxy in the React application
+## 3. Quick setup
 
-### 5.1 Service configuration
+1. **Install dependencies**
 
-`src/services/notionService.ts` now points to the proxy:
+   ```
+   npm install express http-proxy-middleware dotenv
+   ```
+
+2. **Create `.env`**
+
+   ```
+   NOTION_TOKEN=secret_abc123               # internal integration token
+   PROXY_PORT=3005                          # optional, default 3005
+   ALLOWED_ORIGIN=http://localhost:3000     # dev server url
+   ```
+
+3. **Start the proxy**
+
+   ```
+   node server.js
+   ```
+
+   Console output:
+
+   ```
+   ▸ Notion CORS proxy listening on http://localhost:3005
+   ```
+
+4. **Verify**
+
+   ```
+   curl -H "Origin: http://localhost:3000" \
+        http://localhost:3005/api/notion/v1/search
+   ```
+
+   Should return JSON search results.
+
+---
+
+## 4. Using from the frontend
+
+In `src/services/notionService.ts` the base URL is set to:
 
 ```ts
-this.baseUrl = import.meta.env.VITE_NOTION_PROXY_URL || 'http://localhost:3005/api/notion';
+const BASE_URL = import.meta.env.VITE_NOTION_PROXY_URL || "http://localhost:3005/api/notion";
 ```
 
-Every request includes the custom header:
-
-```ts
-headers: {
-  'x-notion-api-key': process.env.NOTION_API_KEY,
-  'Content-Type': 'application/json',
-}
-```
-
-Nothing else changes — you can still call `search`, `createPage`, etc.
-
-### 5.2 Testing
-
-```ts
-const pages = await notionService.getAllPages();
-console.log(pages);
-```
-
-Open the browser dev tools → **Network**  
-You should see requests hitting `localhost:3005/api/notion/search`, all green.
+All Notion calls (`pages`, `databases`, `search`, …) are automatically routed through the proxy.
 
 ---
 
-## 6. Deploying the proxy
+## 5. Security considerations
 
-You have three options:
+| Risk | Mitigation |
+|-----|------------|
+| **Token leakage** | Token lives only in `.env` on the server side. The browser never sees it. |
+| **Open relay** | Proxy checks `ALLOWED_ORIGIN`. Requests from other origins are rejected. |
+| **Rate limits** | Still subject to Notion’s per-token rate limits. Use one token per workspace. |
 
-| Option | When to choose | Notes |
-|--------|----------------|-------|
-| **Same Node server** | You already run a custom backend | Mount the `notionProxy` handler under `/api/notion/*`. |
-| **Serverless function** | Deploying to Vercel / Netlify | Copy `src/api/notionProxy.js` into `api/notion.js`. |
-| **Standalone micro-service** | Complex infra / k8s | Expose on its own domain, set `VITE_NOTION_PROXY_URL` accordingly. |
-
-Remember to set `FRONTEND_URL` to your production domain and use a **production** Notion key.
+> **Production** – deploy the proxy behind your own firewall/VPN or serverless function (Cloudflare Workers, Vercel Edge, etc.) and lock down allowed origins to your prod domain.
 
 ---
 
-## 7. General tips for CORS pain in other APIs
+## 6. Advanced configuration
 
-1. **Check docs first** – many public APIs expose a CORS-enabled endpoint (e.g. `https://api.example.com/public`).
-2. **Use a proxy** – pattern above works for any API that allows server-to-server calls.
-3. **Configure the API** – if you own the API backend, simply add  
-   `Access-Control-Allow-Origin: *` (or a specific origin list) to responses.
-4. **Avoid client secrets in the browser** – proxy keeps tokens on the server, never ship them to the client.
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `NOTION_TOKEN` | – | Internal integration token. Required. |
+| `PROXY_PORT` | `3005` | Listening port. |
+| `ALLOWED_ORIGIN` | `*` | Comma-separated list of origins allowed to hit the proxy. |
+| `LOG_LEVEL` | `info` | `silent`, `info`, or `debug`. |
+
+Example `.env` for staging:
+
+```
+NOTION_TOKEN=secret_live_token
+PROXY_PORT=8080
+ALLOWED_ORIGIN=https://dashboard.museroom.app
+LOG_LEVEL=debug
+```
 
 ---
 
-## 8. Troubleshooting checklist
+## 7. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| `CORS` error persists | Verify the React app **exactly** matches `FRONTEND_URL`. |
-| `401 unauthorized` from Notion | Wrong `NOTION_API_KEY` or integration lacks workspace access. |
-| Proxy returns `500` | Check terminal ① logs — error message is forwarded. |
-| React still calls `https://api.notion.com` directly | Make sure `VITE_NOTION_PROXY_URL` is loaded (restart `npm run dev`). |
+| `CORS error: blocked by policy` | Check that the proxy is running and `VITE_NOTION_PROXY_URL` matches the port. |
+| `401 unauthorized` from Notion | Ensure `NOTION_TOKEN` is valid and has workspace access. |
+| Proxy logs `Origin not allowed` | Add your dev/prod URL to `ALLOWED_ORIGIN`. |
+| Port collision | Change `PROXY_PORT` in `.env` and `VITE_NOTION_PROXY_URL`. |
 
 ---
 
-### That’s it!  
-You can now call the Notion API from your React app without any CORS headaches while keeping your secret token secure. Happy building! 🚀
+## 8. FAQ
+
+**Q: Can I skip the proxy and call Notion directly?**  
+A: Not in the browser – CORS will block you. You *can* make direct calls from a serverless function if you don’t need real-time UI.
+
+**Q: Is this the same as Notion MCP?**  
+A: No. The MCP server provides **tool-calling** for LLMs. The CORS proxy is a very small layer only solving browser CORS.
+
+**Q: Does this add latency?**  
+A: Negligible on localhost (~1-2 ms). In production place the proxy in the same region as your frontend for minimal overhead.
+
+---
+
+Happy building! If you run into issues open a ticket or ping #dev-help in Discord.
