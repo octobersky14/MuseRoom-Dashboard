@@ -57,6 +57,12 @@ export function VoiceAgent({
     "notion" | "discord" | "calendar" | "general" | null
   >(null);
 
+  // Helper to generate a collision-resistant ID for React keys
+  const generateMessageId = useCallback(
+    () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8),
+    []
+  );
+
   const { toast } = useToast();
 
   // Use the sophisticated direct speech recognition hook
@@ -69,11 +75,19 @@ export function VoiceAgent({
     elevenLabsApiKey: useElevenLabs ? elevenLabsApiKey : "",
     selectedVoice: selectedVoice,
     useElevenLabs: useElevenLabs,
-    systemInstruction: `You are an AI assistant integrated into the MuseRoom Dashboard. 
-    You can help users with Notion, Discord, and Google Calendar. 
-    You have direct access to the user's Notion workspace through a secure API.
-    When users ask about their Notion workspace, you can fetch, create, and update content.
-    Be helpful, concise, and friendly.`,
+    systemInstruction: `You are an AI assistant integrated into the MuseRoom Dashboard.
+
+You ALREADY have fully authenticated access (via secure backend services) to:
+• The user's Notion workspace
+• The user's Discord server/channels
+• The user's Google Calendar
+
+All required API keys and credentials are managed by the system—never ask the user
+to provide authentication tokens, API keys, or any credentials.
+
+Be helpful, concise, and friendly while assisting with tasks such as creating,
+reading, updating, or searching Notion pages/databases, interacting with Discord
+messages/channels, and managing Google Calendar events.`,
     onError: (error) => {
       console.error("AI Assistant Error:", error);
       toast({
@@ -136,7 +150,7 @@ export function VoiceAgent({
     if (initialPrompt) {
       // If there is an initial prompt, add only the user message and process it
       const userMessage: Message = {
-        id: Date.now().toString(),
+        id: generateMessageId(),
         text: initialPrompt,
         timestamp: new Date(),
         isUser: true,
@@ -250,7 +264,7 @@ export function VoiceAgent({
 
       setIsProcessing(true);
       const userMessage: Message = {
-        id: Date.now().toString(),
+        id: generateMessageId(),
         text: userInput,
         timestamp: new Date(),
         isUser: true,
@@ -281,7 +295,7 @@ export function VoiceAgent({
         }
 
         const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
+          id: generateMessageId(),
           text: response,
           timestamp: new Date(),
           isUser: false,
@@ -302,7 +316,7 @@ export function VoiceAgent({
           "I'm sorry, I encountered an error processing your request. Please try again.";
 
         const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
+          id: generateMessageId(),
           text: errorMessage,
           timestamp: new Date(),
           isUser: false,

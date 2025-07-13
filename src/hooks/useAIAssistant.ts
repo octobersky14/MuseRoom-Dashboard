@@ -119,11 +119,18 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
         } else {
           // Set default system instruction if none provided
           geminiServiceRef.current.setSystemInstruction(
-            `You are an AI assistant integrated into the MuseRoom Dashboard. 
-            You can help users with Notion, Discord, and Google Calendar. 
-            You have direct access to the user's Notion workspace through a secure API.
-            When users ask about their Notion workspace, you can fetch, create, and update content.
-            Be helpful, concise, and friendly.`
+            `You are an AI assistant integrated into the MuseRoom Dashboard.
+You ALREADY have fully authenticated access (via secure backend services) to:
+• The user's Notion workspace
+• The user's Discord server/channels
+• The user's Google Calendar
+
+All required API keys and credentials are managed by the system—never ask the user
+to provide authentication tokens, API keys, or any credentials.
+
+Be helpful, concise, and friendly while assisting with tasks such as creating,
+reading, updating, or searching Notion pages/databases, interacting with Discord
+messages/channels, and managing Google Calendar events.`
           );
         }
       } catch (err) {
