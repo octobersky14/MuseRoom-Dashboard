@@ -8,6 +8,7 @@ import NotionService, {
   CreatePageRequest,
   UpdatePageRequest
 } from '@/services/notionService';
+import WorkspaceAnalyzer from '@/services/workspaceAnalyzer';  // NEW
 import NotionMcpService, {
   ConnectionStatus, 
   AuthStatus,
@@ -130,6 +131,8 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
   const notionServiceRef = useRef<NotionService | null>(null);
   const notionMcpServiceRef = useRef<NotionMcpService | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const workspaceAnalyzerRef = useRef<WorkspaceAnalyzer | null>(null); // NEW
+  const [workspaceSummary, setWorkspaceSummary] = useState<string>(''); // NEW
 
   // Initialize services
   useEffect(() => {
@@ -140,11 +143,8 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
         
         // Set the system instruction - this will be added to conversation history
         // rather than passed as a parameter in the API call
-        if (systemInstruction) {
-          geminiServiceRef.current.setSystemInstruction(systemInstruction);
-        } else {
-          // Set default system instruction if none provided
-          geminiServiceRef.current.setSystemInstruction(
+        const baseInstruction = systemInstruction || 
+          `You are an AI assistant integrated into the MuseRoom Dashboard.
             `You are an AI assistant integrated into the MuseRoom Dashboard.
 You ALREADY have fully authenticated access (via secure backend services) to:
 • The user's Notion workspace
@@ -157,7 +157,15 @@ to provide authentication tokens, API keys, or any credentials.
 Be helpful, concise, and friendly while assisting with tasks such as creating,
 reading, updating, or searching Notion pages/databases, interacting with Discord
 messages/channels, and managing Google Calendar events.`
+
+        // If we already have a workspace summary, append it now
+        if (workspaceSummary) {
+          geminiServiceRef.current.setSystemInstruction(
+            `${baseInstruction}\n\n---\n# Workspace Overview\n${workspaceSummary}`
           );
+        } else {
+          geminiServiceRef.current.setSystemInstruction(baseInstruction);
+        }
         }
 
         /* NOTE:
@@ -217,6 +225,20 @@ messages/channels, and managing Google Calendar events.`
       console.warn('Notion API key is missing - Notion integration will be unavailable');
     }
 
+    // Initialise workspace analyser once Notion service is ready
+    if (notionApiKey && !workspaceAnalyzerRef.current) {
+      workspaceAnalyzerRef.current = new WorkspaceAnalyzer(notionApiKey);
+      // Fetch summary async
+      (async () => {
+        try {
+          const summary = await workspaceAnalyzerRef.current!.getWorkspaceSummary();
+          setWorkspaceSummary(summary);
+        } catch (err) {
+          console.warn('Failed to fetch workspace summary:', err);
+        }
+      })();
+    }
+
     // Clean up on unmount
     return () => {
       if (audioRef.current) {
@@ -229,6 +251,21 @@ messages/channels, and managing Google Calendar events.`
       }
     };
   }, [geminiApiKey, notionApiKey, systemInstruction, onError, notionMcpMode, notionMcpUrl]);
+
+  /* -----------------------------------------------------------
+   * Effect: update Gemini system instruction once summary ready
+   * --------------------------------------------------------- */
+  useEffect(() => {
+    if (workspaceSummary && geminiServiceRef.current) {
+      const current = geminiServiceRef.current;
+      // Re-apply system instruction including summary
+      const existing = current.getSystemInstruction?.() || ''; // optional helper
+      // Avoid duplication
+      if (!existing.includes(workspaceSummary)) {
+        current.setSystemInstruction(`${existing}\n\n---\n# Workspace Overview\n${workspaceSummary}`);
+      }
+    }
+  }, [workspaceSummary]);
 
   // Connect to Notion MCP
   const connectToNotion = useCallback(async (): Promise<void> => {
@@ -573,6 +610,31 @@ messages/channels, and managing Google Calendar events.`
   // Process user message with Notion context if needed
   const processMessageWithNotionContext = useCallback(
     async (messageText: string, intentResult: any): Promise<string> => {
+      /* ------------------------------------------------------
+       * 0.  Workspace-overview / team-specific smart replies
+       * ---------------------------------------------------- */
+      if (workspaceAnalyzerRef.current) {
+        const analyzer = workspaceAnalyzerRef.current;
+
+        // Quick helper: detect "workspace overview" questions
+        const workspaceQ = /(workspace|notion)\s+(overview|summary|status)/i;
+        if (workspaceQ.test(messageText)) {
+          return await analyzer.getWorkspaceSummary();
+        }
+
+        // Helper: detect team names mentioned in the message
+        const detectTeamName = () => {
+          const teams = ['ai pod', 'ai team', 'agentic ai', 'marketing', 'daw', 'design', 'ui', 'ux', 'gtm'];
+          const lower = messageText.toLowerCase();
+          return teams.find((t) => lower.includes(t)) || null;
+        };
+
+        const teamName = detectTeamName();
+        if (teamName) {
+          return await analyzer.getTeamWorkStatus(teamName);
+        }
+      }
+
       // If it's a Notion-related intent, augment the AI response with actual Notion data
       if (intentResult.intent === 'notion') {
         try {
