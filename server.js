@@ -60,8 +60,19 @@ app.use('/api/notion', async (req, res) => {
       return res.status(400).json({ error: 'Notion API key is required' });
     }
 
-    // Extract the path from the request URL
-    const endpoint = req.path.substring(1) || ''; // Remove leading slash
+    /* ------------------------------------------------------------------
+     * Build upstream Notion URL without duplicating the `/v1/` segment.
+     *
+     * Incoming examples:
+     *   /v1/search          ->  search
+     *   /search             ->  search
+     *   /v1/databases/123   ->  databases/123
+     * ------------------------------------------------------------------ */
+    let endpoint = req.path.replace(/^\/+/, ''); // strip leading slashes
+    if (endpoint.startsWith('v1/')) {
+      endpoint = endpoint.slice(3); // remove the duplicated 'v1/' prefix
+    }
+
     
     // Construct the full Notion API URL
     const notionUrl = `${NOTION_API_BASE_URL}/${endpoint}`;
