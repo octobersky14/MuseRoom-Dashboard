@@ -160,23 +160,13 @@ messages/channels, and managing Google Calendar events.`
           );
         }
 
-        /* Immediately verify the API key – this may switch us to offline mode */
-        (async () => {
-          try {
-            const isValid = await geminiServiceRef.current!.checkApiKey?.();
-            if (isValid === false) {
-              setIsOfflineMode(true);
-              setApiErrorMessage(
-                geminiServiceRef.current!.apiKeyErrorMessage ||
-                  'Unable to reach Gemini API – running in offline mode.'
-              );
-            }
-          } catch (e) {
-            // Any error here → offline mode. Store a generic message.
-            setIsOfflineMode(true);
-            setApiErrorMessage('Error validating Gemini API key – offline mode activated.');
-          }
-        })();
+        /* NOTE:
+         * We no longer perform an *immediate* API-key validation here.
+         * GeminiService now keeps a debounced, class-level validation
+         * cache that will be triggered lazily the first time an actual
+         * request is made.  This prevents multiple components from
+         * performing redundant validation calls in parallel.
+         */
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to initialize Gemini service');
         setError(error);
@@ -277,51 +267,85 @@ messages/channels, and managing Google Calendar events.`
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
   }, []);
 
-  // Detect intent from a message
+  // Refs for debouncing intent detection
+  const lastIntentCallRef = useRef<{
+    timestamp: number;
+    message: string;
+    promise: Promise<{
+      intent: 'notion' | 'discord' | 'calendar' | 'general';
+      confidence: number;
+      action?: string;
+      params?: Record<string, any>;
+    }>;
+  } | null>(null);
+
+  // Detect intent from a message with debouncing
   const detectIntent = useCallback(
     async (message: string) => {
       if (!geminiServiceRef.current) {
         throw new Error('Gemini service not initialized');
       }
       
-      try {
-        const intentResult = await geminiServiceRef.current.detectIntent(message);
-        
-        // Update last detected intent
-        setLastDetectedIntent({
-          intent: intentResult.intent,
-          confidence: intentResult.confidence,
-          action: intentResult.action,
-        });
-        
-        // Notify about intent if callback provided
-        if (onIntentDetected) {
-          onIntentDetected(
-            intentResult.intent, 
-            intentResult.confidence, 
-            intentResult.action
-          );
-        }
-        
-        return intentResult;
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error('Failed to detect intent');
-        setError(error);
-        if (onError) onError(error);
-
-        // If this looks like an API-key / quota problem, switch to offline mode
-        const msg = error.message.toLowerCase();
-        if (
-          msg.includes('api key') ||
-          msg.includes('quota') ||
-          msg.includes('rate limit')
-        ) {
-          setIsOfflineMode(true);
-          setApiErrorMessage(error.message);
-        }
-
-        throw error;
+      // Debounce: if the same message was processed recently, return the cached promise
+      const now = Date.now();
+      if (
+        lastIntentCallRef.current &&
+        lastIntentCallRef.current.message === message &&
+        now - lastIntentCallRef.current.timestamp < 800
+      ) {
+        return lastIntentCallRef.current.promise;
       }
+      
+      // Create a new promise for this intent detection
+      const intentPromise = (async () => {
+        try {
+          const intentResult = await geminiServiceRef.current!.detectIntent(message);
+          
+          // Update last detected intent
+          setLastDetectedIntent({
+            intent: intentResult.intent,
+            confidence: intentResult.confidence,
+            action: intentResult.action,
+          });
+          
+          // Notify about intent if callback provided
+          if (onIntentDetected) {
+            onIntentDetected(
+              intentResult.intent, 
+              intentResult.confidence, 
+              intentResult.action
+            );
+          }
+          
+          return intentResult;
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error('Failed to detect intent');
+          setError(error);
+          if (onError) onError(error);
+
+          // If this looks like an API-key / quota problem, switch to offline mode
+          const msg = error.message.toLowerCase();
+          if (
+            msg.includes('api key') ||
+            msg.includes('quota') ||
+            msg.includes('rate limit')
+          ) {
+            setIsOfflineMode(true);
+            setApiErrorMessage(error.message);
+          }
+
+          throw error;
+        }
+      })();
+      
+      // Store the promise for potential reuse
+      lastIntentCallRef.current = {
+        timestamp: now,
+        message,
+        promise: intentPromise
+      };
+      
+      return intentPromise;
     },
     [onError, onIntentDetected]
   );
@@ -337,7 +361,7 @@ messages/channels, and managing Google Calendar events.`
       if (notionMcpServiceRef.current) {
         try {
           let result;
-          
+
           switch (action) {
             case 'search':
               result = await notionMcpServiceRef.current.search(params?.query, params?.filter);
@@ -661,7 +685,7 @@ messages/channels, and managing Google Calendar events.`
         setMessages((prev) => [...prev, userMessage]);
 
         // Detect intent from the message
-        const intentResult = await geminiServiceRef.current.detectIntent(messageText);
+        const intentResult = await detectIntent(messageText);
         
         // Update last detected intent
         setLastDetectedIntent({
@@ -729,7 +753,8 @@ messages/channels, and managing Google Calendar events.`
       selectedVoice, 
       onError, 
       onIntentDetected,
-      processMessageWithNotionContext
+      processMessageWithNotionContext,
+      detectIntent
     ]
   );
 

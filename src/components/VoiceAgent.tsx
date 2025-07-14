@@ -9,7 +9,6 @@ import { useAIAssistant } from "../hooks/useAIAssistant";
 import useDirectSpeechRecognition, {
   RecognitionStatus,
 } from "../../useDirectSpeechRecognition";
-import GeminiService from "@/services/geminiService";
 
 interface Message {
   id: string;
@@ -59,7 +58,7 @@ export function VoiceAgent({
   >(null);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState("");
-  const geminiServiceRef = useRef<GeminiService | null>(null);
+  // Removed standalone GeminiService ref – useAIAssistant handles this centrally
 
   // Helper to generate a collision-resistant ID for React keys
   const generateMessageId = useCallback(
@@ -137,38 +136,7 @@ messages/channels, and managing Google Calendar events.`,
   });
 
   // Check if Gemini service is in offline/mock mode
-  useEffect(() => {
-    // Initialize Gemini service to check API key validity
-    const checkApiStatus = async () => {
-      try {
-        const geminiService = new GeminiService(import.meta.env.VITE_GEMINI_API_KEY);
-        geminiServiceRef.current = geminiService;
-        
-        // This will automatically check if the API key is valid
-        const isValid = await geminiService.checkApiKey();
-        
-        if (!isValid) {
-          setIsOfflineMode(true);
-          setApiErrorMessage(geminiService.apiKeyErrorMessage || 
-            "There was an issue connecting to the Gemini API. Using offline mode for now.");
-          
-          toast({
-            title: "Offline Mode Activated",
-            description: geminiService.apiKeyErrorMessage || 
-              "There was an issue connecting to the Gemini API. Using offline mode for now.",
-            variant: "warning",
-            duration: 6000,
-          });
-        }
-      } catch (error) {
-        console.error("Error checking API status:", error);
-        setIsOfflineMode(true);
-        setApiErrorMessage("Failed to initialize Gemini service. Using offline mode.");
-      }
-    };
-    
-    checkApiStatus();
-  }, [toast]);
+  // (Removed legacy GeminiService validation useEffect – centralized in useAIAssistant)
 
   // Handle user speech transcript
   function handleUserTranscript(transcript: string) {

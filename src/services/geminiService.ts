@@ -49,6 +49,18 @@ class GeminiService {
   private conversationHistory: GeminiMessage[] = [];
   private maxHistoryLength: number = 10;
   private systemInstruction: string = '';
+  private isApiKeyValid: boolean = true;
+  private useMockMode: boolean = false;
+  private apiKeyErrorMessage: string = '';
+
+  /* ------------------------------------------------------------------
+   * Static, class-level state so all instances share API-key status
+   * ------------------------------------------------------------------ */
+  private static apiStatus: 'unknown' | 'valid' | 'invalid' = 'unknown';
+  private static apiKeyErrorMessageStatic: string = '';
+  private static lastCheckPromise: Promise<boolean> | null = null;
+  private static lastCheckTimestamp = 0;
+  private static readonly COOLDOWN_MS = 60_000; // 1-minute cool-down
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -56,11 +68,118 @@ class GeminiService {
     this.model = this.genAI.getGenerativeModel({ model: this.modelName });
 
     // Set default system instruction
-    this.systemInstruction = `You are an AI assistant integrated into the MuseRoom Dashboard. 
-You can help users with Notion, Discord, and Google Calendar. 
-You should be helpful, concise, and friendly. 
-When users ask about their Notion workspace, Discord messages, or calendar events, 
-try to provide the most relevant information and assist with any tasks they need help with.`;
+    this.systemInstruction = `You are an AI assistant integrated into the MuseRoom Dashboard.
+You ALREADY have fully authenticated access (via secure backend services) to:
+• The user's Notion workspace
+• The user's Discord server/channels
+• The user's Google Calendar
+
+All required API keys and credentials are managed by the system—never ask the user
+to provide authentication tokens, API keys, or any credentials.
+
+Your job is to be helpful, concise, and friendly while assisting with tasks such as
+creating, reading, updating, or searching Notion pages/databases, interacting with
+Discord messages/channels, and managing Google Calendar events.`;
+
+    // Sync per-instance flags with cached class state (no network call)
+    if (GeminiService.apiStatus === 'valid') {
+      this.isApiKeyValid = true;
+      this.useMockMode = false;
+    } else if (GeminiService.apiStatus === 'invalid') {
+      this.isApiKeyValid = false;
+      this.useMockMode = true;
+      this.apiKeyErrorMessage = GeminiService.apiKeyErrorMessageStatic;
+    }
+  }
+
+  /**
+   * Check if the API key is valid by making a simple request
+   * @returns Promise<boolean> - Whether the API key is valid
+   */
+  public async checkApiKey(): Promise<boolean> {
+    /* 1.  Return cached result if known  --------------------------------- */
+    if (GeminiService.apiStatus === 'valid') {
+      this.isApiKeyValid = true;
+      this.useMockMode = false;
+      return true;
+    }
+    if (GeminiService.apiStatus === 'invalid') {
+      this.isApiKeyValid = false;
+      this.useMockMode = true;
+      this.apiKeyErrorMessage = GeminiService.apiKeyErrorMessageStatic;
+      return false;
+    }
+
+    /* 2.  Debounce / reuse any in-flight validation ---------------------- */
+    const now = Date.now();
+    if (
+      GeminiService.lastCheckPromise &&
+      now - GeminiService.lastCheckTimestamp < GeminiService.COOLDOWN_MS
+    ) {
+      return GeminiService.lastCheckPromise.then((isValid) => {
+        this.isApiKeyValid = isValid;
+        this.useMockMode = !isValid;
+        this.apiKeyErrorMessage = GeminiService.apiKeyErrorMessageStatic;
+        return isValid;
+      });
+    }
+
+    /* 3.  Perform the actual validation (once) --------------------------- */
+    GeminiService.lastCheckTimestamp = now;
+    GeminiService.lastCheckPromise = (async () => {
+      try {
+        const testModel = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const testChat = testModel.startChat({
+          generationConfig: { maxOutputTokens: 10 },
+        });
+        await testChat.sendMessage('test');
+
+        // Success -> mark as valid
+        GeminiService.apiStatus = 'valid';
+        GeminiService.apiKeyErrorMessageStatic = '';
+        return true;
+      } catch (error: any) {
+        GeminiService.apiStatus = 'invalid';
+
+        if (error instanceof Error) {
+          const msg = error.message.toLowerCase();
+          if (
+            msg.includes('api key expired') ||
+            msg.includes('invalid api key') ||
+            msg.includes('api_key_invalid')
+          ) {
+            GeminiService.apiKeyErrorMessageStatic =
+              'The Gemini API key has expired. Please contact the administrator to renew it.';
+          } else if (
+            msg.includes('quota') ||
+            msg.includes('rate limit') ||
+            msg.includes('exceeded')
+          ) {
+            GeminiService.apiKeyErrorMessageStatic =
+              'The Gemini API quota has been exceeded. Please try again later or contact the administrator.';
+          } else {
+            GeminiService.apiKeyErrorMessageStatic =
+              'There was an issue connecting to the Gemini API. Using offline mode for now.';
+          }
+        } else {
+          GeminiService.apiKeyErrorMessageStatic =
+            'Unknown error connecting to the Gemini API. Using offline mode for now.';
+        }
+
+        console.warn(
+          'Gemini API key issue detected:',
+          GeminiService.apiKeyErrorMessageStatic
+        );
+        console.warn('Switching to mock response mode');
+        return false;
+      }
+    })();
+
+    const isValid = await GeminiService.lastCheckPromise;
+    this.isApiKeyValid = isValid;
+    this.useMockMode = !isValid;
+    this.apiKeyErrorMessage = GeminiService.apiKeyErrorMessageStatic;
+    return isValid;
   }
 
   /**
@@ -75,7 +194,9 @@ try to provide the most relevant information and assist with any tasks they need
    */
   public setModel(model: string): void {
     this.modelName = model;
-    this.model = this.genAI.getGenerativeModel({ model: this.modelName });
+    if (this.isApiKeyValid) {
+      this.model = this.genAI.getGenerativeModel({ model: this.modelName });
+    }
   }
 
   /**
@@ -86,12 +207,56 @@ try to provide the most relevant information and assist with any tasks they need
   }
 
   /**
+   * Get a mock response based on the message content
+   * Used when the API key is invalid
+   */
+  private getMockResponse(message: string): string {
+    // Check if it's a Notion-related query
+    if (message.toLowerCase().includes('notion')) {
+      return "I can help you with your Notion workspace. I already have secure access to your Notion content through the backend integration. What would you like to do with your Notion pages or databases?";
+    }
+    
+    // Check if it's a Discord-related query
+    if (message.toLowerCase().includes('discord')) {
+      return "I can help you manage your Discord channels and messages. What would you like to do with Discord today?";
+    }
+    
+    // Check if it's a Calendar-related query
+    if (message.toLowerCase().includes('calendar') || 
+        message.toLowerCase().includes('schedule') || 
+        message.toLowerCase().includes('event')) {
+      return "I can help you manage your Google Calendar. Would you like to check your schedule, create a new event, or update an existing one?";
+    }
+    
+    // Default response for general queries
+    return "I'm here to help you with Notion, Discord, and Google Calendar. While I'm currently operating in offline mode due to an API connection issue, I can still provide information about how these integrations work. What would you like to know?";
+  }
+
+  /**
    * Send a message to Gemini and get a response
    */
   public async sendMessage(
     message: string,
     options: GeminiRequestOptions = {}
   ): Promise<string> {
+    // If we're in mock mode, return a mock response
+    if (this.useMockMode) {
+      const mockResponse = this.getMockResponse(message);
+      
+      // Still add the messages to history for consistency
+      this.addMessageToHistory({
+        role: 'user',
+        parts: [{ text: message }],
+      });
+      
+      this.addMessageToHistory({
+        role: 'model',
+        parts: [{ text: mockResponse }],
+      });
+      
+      return `${mockResponse}\n\n(Note: I'm currently operating in offline mode. ${this.apiKeyErrorMessage})`;
+    }
+    
     try {
       // Prepare messages for Gemini API - we don't use systemInstruction parameter anymore
       const chat = this.model.startChat({
@@ -121,6 +286,48 @@ try to provide the most relevant information and assist with any tasks they need
 
       return responseText;
     } catch (error) {
+      // Check if it's an API key issue
+      if (error instanceof Error) {
+        const errorMessage = error.message.toLowerCase();
+        
+        if (errorMessage.includes('api key expired') || 
+            errorMessage.includes('invalid api key') || 
+            errorMessage.includes('api_key_invalid') ||
+            errorMessage.includes('quota') || 
+            errorMessage.includes('rate limit') || 
+            errorMessage.includes('exceeded')) {
+          
+          // Set mock mode and get a mock response
+          this.isApiKeyValid = false;
+          this.useMockMode = true;
+          
+          if (errorMessage.includes('api key expired') || errorMessage.includes('invalid api key')) {
+            this.apiKeyErrorMessage = 'The Gemini API key has expired. Please contact the administrator to renew it.';
+          } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+            this.apiKeyErrorMessage = 'The Gemini API quota has been exceeded. Please try again later or contact the administrator.';
+          }
+          
+          console.warn('Switching to mock mode due to API key issue:', this.apiKeyErrorMessage);
+          
+          // Return a mock response
+          const mockResponse = this.getMockResponse(message);
+          
+          // Add to history
+          this.addMessageToHistory({
+            role: 'user',
+            parts: [{ text: message }],
+          });
+          
+          this.addMessageToHistory({
+            role: 'model',
+            parts: [{ text: mockResponse }],
+          });
+          
+          return `${mockResponse}\n\n(Note: I've switched to offline mode. ${this.apiKeyErrorMessage})`;
+        }
+      }
+      
+      // For other errors, use standard error handling
       this.handleApiError(error);
       return 'I apologize, but I encountered an error processing your request. Please try again later.';
     }
@@ -133,6 +340,36 @@ try to provide the most relevant information and assist with any tasks they need
     userQuery: string,
     params: NotionActionParams
   ): Promise<string> {
+    // If in mock mode, return a specialized Notion mock response
+    if (this.useMockMode) {
+      let mockResponse = "";
+      
+      switch (params.action) {
+        case 'create':
+          mockResponse = `I would create a new ${params.resourceType} in your Notion workspace with the details you provided.`;
+          break;
+        case 'read':
+          mockResponse = `I would retrieve the ${params.resourceType}${params.resourceId ? ` with ID ${params.resourceId}` : ''} from your Notion workspace.`;
+          break;
+        case 'update':
+          mockResponse = `I would update the ${params.resourceType}${params.resourceId ? ` with ID ${params.resourceId}` : ''} in your Notion workspace.`;
+          break;
+        case 'delete':
+          mockResponse = `I would delete the ${params.resourceType}${params.resourceId ? ` with ID ${params.resourceId}` : ''} from your Notion workspace.`;
+          break;
+        case 'search':
+          mockResponse = `I would search for ${params.resourceType}s in your Notion workspace.`;
+          break;
+        case 'list':
+          mockResponse = `I would list all ${params.resourceType}s in your Notion workspace.`;
+          break;
+        default:
+          mockResponse = "I would help you with your Notion workspace.";
+      }
+      
+      return `${mockResponse}\n\n(Note: I'm currently operating in offline mode. ${this.apiKeyErrorMessage})`;
+    }
+    
     // Create a structured prompt for Notion actions that includes system instructions
     const structuredPrompt = `
 ${this.systemInstruction}
@@ -161,6 +398,33 @@ Respond with the result in a user-friendly format.
     userQuery: string,
     params: DiscordActionParams
   ): Promise<string> {
+    // If in mock mode, return a specialized Discord mock response
+    if (this.useMockMode) {
+      let mockResponse = "";
+      
+      switch (params.action) {
+        case 'read':
+          mockResponse = `I would read the last ${params.limit || 10} messages from ${
+            params.channelId ? `channel ${params.channelId}` : 'the current channel'
+          }.`;
+          break;
+        case 'send':
+          mockResponse = `I would send a message to ${
+            params.channelId ? `channel ${params.channelId}` : 'the current channel'
+          } with the content you provided.`;
+          break;
+        case 'summarize':
+          mockResponse = `I would summarize the conversation in ${
+            params.channelId ? `channel ${params.channelId}` : 'the current channel'
+          }.`;
+          break;
+        default:
+          mockResponse = "I would help you with your Discord channels and messages.";
+      }
+      
+      return `${mockResponse}\n\n(Note: I'm currently operating in offline mode. ${this.apiKeyErrorMessage})`;
+    }
+    
     // Create a structured prompt for Discord actions that includes system instructions
     const structuredPrompt = `
 ${this.systemInstruction}
@@ -199,6 +463,30 @@ Respond with the result in a user-friendly format.
     userQuery: string,
     params: CalendarActionParams
   ): Promise<string> {
+    // If in mock mode, return a specialized Calendar mock response
+    if (this.useMockMode) {
+      let mockResponse = "";
+      
+      switch (params.action) {
+        case 'list':
+          mockResponse = `I would list your events from ${params.timeMin || 'today'} to ${params.timeMax || 'next week'}.`;
+          break;
+        case 'create':
+          mockResponse = `I would create a new event in your calendar with the details you provided.`;
+          break;
+        case 'update':
+          mockResponse = `I would update event ${params.eventId} with the new details you provided.`;
+          break;
+        case 'delete':
+          mockResponse = `I would delete event ${params.eventId} from your calendar.`;
+          break;
+        default:
+          mockResponse = "I would help you manage your Google Calendar events and schedule.";
+      }
+      
+      return `${mockResponse}\n\n(Note: I'm currently operating in offline mode. ${this.apiKeyErrorMessage})`;
+    }
+    
     // Create a structured prompt for Calendar actions that includes system instructions
     const structuredPrompt = `
 ${this.systemInstruction}
@@ -240,6 +528,57 @@ Respond with the result in a user-friendly format.
     action?: string;
     params?: Record<string, any>;
   }> {
+    // If in mock mode, use a simple rule-based intent detection
+    if (this.useMockMode) {
+      // Simple keyword-based intent detection for mock mode
+      const lowerMessage = message.toLowerCase();
+      
+      if (lowerMessage.includes('notion') || 
+          lowerMessage.includes('page') || 
+          lowerMessage.includes('database') || 
+          lowerMessage.includes('task')) {
+        return {
+          intent: 'notion',
+          confidence: 0.8,
+          action: lowerMessage.includes('create') ? 'create' : 
+                  lowerMessage.includes('read') || lowerMessage.includes('get') ? 'read' : 
+                  lowerMessage.includes('update') ? 'update' : 
+                  lowerMessage.includes('delete') ? 'delete' : 
+                  lowerMessage.includes('search') ? 'search' : 'list',
+          params: {
+            resourceType: lowerMessage.includes('database') ? 'database' : 'page'
+          }
+        };
+      } else if (lowerMessage.includes('discord') || 
+                lowerMessage.includes('channel') || 
+                lowerMessage.includes('message')) {
+        return {
+          intent: 'discord',
+          confidence: 0.8,
+          action: lowerMessage.includes('send') ? 'send' : 
+                  lowerMessage.includes('summarize') ? 'summarize' : 'read',
+          params: {}
+        };
+      } else if (lowerMessage.includes('calendar') || 
+                lowerMessage.includes('event') || 
+                lowerMessage.includes('schedule') || 
+                lowerMessage.includes('meeting')) {
+        return {
+          intent: 'calendar',
+          confidence: 0.8,
+          action: lowerMessage.includes('create') ? 'create' : 
+                  lowerMessage.includes('update') ? 'update' : 
+                  lowerMessage.includes('delete') ? 'delete' : 'list',
+          params: {}
+        };
+      } else {
+        return {
+          intent: 'general',
+          confidence: 0.5
+        };
+      }
+    }
+    
     try {
       // Include intent classification instructions in the prompt itself
       // instead of using systemInstruction parameter
@@ -355,6 +694,18 @@ Please respond to the user's message in a helpful, concise, and friendly manner.
               resourceId: intentResult.params.resourceId,
               data: intentResult.params.data,
             });
+          } else {
+            // Notion intent but no specific action – still remind model it has access
+            const authContextPrompt = `
+${this.systemInstruction}
+
+REMINDER: You already have authenticated access to the user's Notion workspace and should never ask for authentication credentials.
+
+User message: "${message}"
+
+Please respond accordingly without requesting any tokens.
+            `;
+            return this.sendMessage(authContextPrompt);
           }
           break;
         
@@ -387,6 +738,12 @@ Please respond to the user's message in a helpful, concise, and friendly manner.
       return this.sendMessage(enhancedMessage);
     } catch (error) {
       console.error("Error processing message", error);
+      
+      // If we're in mock mode, return a friendly error message
+      if (this.useMockMode) {
+        return `I'm here to help with your Notion, Discord, and Google Calendar needs. However, I'm currently operating in offline mode due to an API connection issue. ${this.apiKeyErrorMessage} How can I assist you with information about these integrations?`;
+      }
+      
       return "I encountered an error processing your request. Please try again.";
     }
   }
@@ -395,6 +752,25 @@ Please respond to the user's message in a helpful, concise, and friendly manner.
    * Helper method to prepare messages for Gemini API
    */
   private prepareMessages(): GeminiMessage[] {
+    // If we're in mock mode, return a minimal history to avoid API calls
+    if (this.useMockMode) {
+      // Just return what we have without trying to initialize with API calls
+      if (this.conversationHistory.length === 0) {
+        // Add a minimal history for consistency
+        this.addMessageToHistory({
+          role: 'user',
+          parts: [{ text: 'Hello' }]
+        });
+        
+        this.addMessageToHistory({
+          role: 'model',
+          parts: [{ text: "I'm ready to assist you with Notion, Discord, and Google Calendar. How can I help you today?" }]
+        });
+      }
+      
+      return this.conversationHistory.slice(-this.maxHistoryLength);
+    }
+    
     // If we have no history yet, initialize with system instruction as first user message
     if (this.conversationHistory.length === 0 && this.systemInstruction) {
       this.addMessageToHistory({
@@ -431,8 +807,30 @@ Please respond to the user's message in a helpful, concise, and friendly manner.
   private handleApiError(error: any): void {
     console.error('Gemini API Error:', error);
     
-    if (error.message) {
+    if (error instanceof Error) {
       console.error('Error message:', error.message);
+      
+      // Check for API key related errors
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes('api key expired') || 
+          errorMessage.includes('invalid api key') || 
+          errorMessage.includes('api_key_invalid') ||
+          errorMessage.includes('quota') || 
+          errorMessage.includes('rate limit') || 
+          errorMessage.includes('exceeded')) {
+        
+        // Set mock mode for future requests
+        this.isApiKeyValid = false;
+        this.useMockMode = true;
+        
+        if (errorMessage.includes('api key expired') || errorMessage.includes('invalid api key')) {
+          this.apiKeyErrorMessage = 'The Gemini API key has expired. Please contact the administrator to renew it.';
+        } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+          this.apiKeyErrorMessage = 'The Gemini API quota has been exceeded. Please try again later or contact the administrator.';
+        }
+        
+        console.warn('Switching to mock mode due to API key issue:', this.apiKeyErrorMessage);
+      }
     }
     
     if (error.response) {
