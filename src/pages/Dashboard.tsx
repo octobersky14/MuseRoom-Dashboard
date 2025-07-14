@@ -177,12 +177,6 @@ const Dashboard: React.FC = () => {
                     id="audio-ring-3"
                   ></div>
                 </div>
-                {/* Click instruction */}
-                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-center">
-                  <p className="text-xs text-muted-foreground/70 font-medium bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50">
-                    Click to activate AI assistant
-                  </p>
-                </div>
               </div>
             </motion.div>
           </motion.div>
