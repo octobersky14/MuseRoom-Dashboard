@@ -20,6 +20,7 @@ import {
   Calendar,
   Volume2,
   Mail,
+  FileText,
   Palette,
   Layout,
   Zap
