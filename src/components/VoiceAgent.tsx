@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import { Volume2, VolumeX, Settings, Loader2, WifiOff, AlertTriangle, LayoutDashboard } from "lucide-react";
+import {
+  Volume2,
+  VolumeX,
+  Settings,
+  Loader2,
+  WifiOff,
+  AlertTriangle,
+  LayoutDashboard,
+} from "lucide-react";
 import { useToast } from "./ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
@@ -17,7 +25,7 @@ interface Message {
   isUser: boolean;
   intent?: string;
   intentConfidence?: number;
-  source?: 'gemini' | 'notion' | 'discord' | 'calendar' | 'system';
+  source?: "gemini" | "notion" | "discord" | "calendar" | "system";
 }
 
 interface ElevenLabsVoice {
@@ -95,30 +103,45 @@ reading, updating, or searching Notion pages/databases, interacting with Discord
 messages/channels, and managing Google Calendar events.`,
     onError: (error) => {
       console.error("AI Assistant Error:", error);
-      
+
       // Check if it's an API key related error
       const errorMessage = error.message.toLowerCase();
-      if (errorMessage.includes('api key expired') || 
-          errorMessage.includes('invalid api key') || 
-          errorMessage.includes('quota') || 
-          errorMessage.includes('rate limit')) {
-        
+      if (
+        errorMessage.includes("api key expired") ||
+        errorMessage.includes("invalid api key") ||
+        errorMessage.includes("quota") ||
+        errorMessage.includes("rate limit")
+      ) {
         // Update offline mode state
         setIsOfflineMode(true);
-        
+
         // Set a user-friendly error message
-        if (errorMessage.includes('api key expired') || errorMessage.includes('invalid api key')) {
-          setApiErrorMessage('The Gemini API key has expired. Please contact the administrator to renew it.');
-        } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
-          setApiErrorMessage('The Gemini API quota has been exceeded. Please try again later.');
+        if (
+          errorMessage.includes("api key expired") ||
+          errorMessage.includes("invalid api key")
+        ) {
+          setApiErrorMessage(
+            "The Gemini API key has expired. Please contact the administrator to renew it."
+          );
+        } else if (
+          errorMessage.includes("quota") ||
+          errorMessage.includes("rate limit")
+        ) {
+          setApiErrorMessage(
+            "The Gemini API quota has been exceeded. Please try again later."
+          );
         } else {
-          setApiErrorMessage('There was an issue connecting to the Gemini API. Using offline mode for now.');
+          setApiErrorMessage(
+            "There was an issue connecting to the Gemini API. Using offline mode for now."
+          );
         }
-        
+
         // Show toast notification
         toast({
           title: "Switching to Offline Mode",
-          description: apiErrorMessage || "API connection issue detected. Using offline mode.",
+          description:
+            apiErrorMessage ||
+            "API connection issue detected. Using offline mode.",
           variant: "warning",
           duration: 6000,
         });
@@ -132,9 +155,11 @@ messages/channels, and managing Google Calendar events.`,
       }
     },
     onIntentDetected: (intent, confidence, action) => {
-      console.log(`Intent detected: ${intent} (${confidence}) - Action: ${action}`);
+      console.log(
+        `Intent detected: ${intent} (${confidence}) - Action: ${action}`
+      );
       setLastIntent(intent as "notion" | "discord" | "calendar" | "general");
-    }
+    },
   });
 
   // Sync offline mode state with assistant hook
@@ -184,24 +209,24 @@ messages/channels, and managing Google Calendar events.`,
       capabilities[Math.floor(Math.random() * capabilities.length)];
 
     let greeting = `${timeGreeting}! Welcome to MuseRoom Dashboard. Today is ${dayName}, ${monthDay}. I'm your unified AI assistant, ready to help with ${randomCapability}. You can speak to me directly or type your questions - I understand both voice and text commands.`;
-    
+
     // Add offline mode notification if needed
     if (isOfflineMode) {
       greeting += ` (Note: I'm currently operating in offline mode. Some advanced features may be limited.)`;
     }
-    
+
     return greeting;
   };
 
   // Function to get workspace overview
   const getWorkspaceOverview = useCallback(async () => {
     if (workspaceOverviewShown) return; // Don't fetch again if already shown
-    
+
     setIsLoadingWorkspace(true);
     try {
       // Send a special message to trigger workspace overview
       const response = await aiAssistant.sendMessage("workspace overview");
-      
+
       // Create a system message with the workspace overview
       const overviewMessage: Message = {
         id: generateMessageId(),
@@ -210,18 +235,18 @@ messages/channels, and managing Google Calendar events.`,
         isUser: false,
         source: "system",
       };
-      
+
       // Add the overview message to the conversation
-      setMessages(prev => {
+      setMessages((prev) => {
         // If it's the first message, just set it
         if (prev.length === 0) return [overviewMessage];
         // Otherwise, add it as the second message (after welcome)
         return [prev[0], overviewMessage, ...prev.slice(1)];
       });
-      
+
       // Mark workspace overview as shown
       setWorkspaceOverviewShown(true);
-      
+
       // Speak the overview if not muted
       if (!isMuted && useElevenLabs) {
         await aiAssistant.speakMessage(response);
@@ -230,13 +255,21 @@ messages/channels, and managing Google Calendar events.`,
       console.error("Error fetching workspace overview:", error);
       toast({
         title: "Workspace Overview Error",
-        description: "Could not fetch workspace overview. Please try again later.",
+        description:
+          "Could not fetch workspace overview. Please try again later.",
         variant: "destructive",
       });
     } finally {
       setIsLoadingWorkspace(false);
     }
-  }, [workspaceOverviewShown, aiAssistant, generateMessageId, isMuted, useElevenLabs, toast]);
+  }, [
+    workspaceOverviewShown,
+    aiAssistant,
+    generateMessageId,
+    isMuted,
+    useElevenLabs,
+    toast,
+  ]);
 
   // Only run this effect on mount and when initialPrompt changes
   useEffect(() => {
@@ -248,16 +281,16 @@ messages/channels, and managing Google Calendar events.`,
         timestamp: new Date(),
         isUser: true,
       };
-      
+
       // Add user message to conversation
       setMessages([userMessage]);
       setCurrentTranscript("");
       setIsProcessing(true);
-      
+
       // Process with AI Assistant - using a standard user message approach
       // instead of trying to use system instructions which cause errors
       processUserInput(initialPrompt);
-      
+
       // Notify parent component that prompt was handled
       if (onPromptHandled) onPromptHandled();
     } else {
@@ -268,12 +301,12 @@ messages/channels, and managing Google Calendar events.`,
         text: welcomeText,
         timestamp: new Date(),
         isUser: false,
-        source: "system" // Mark as coming from system without API call
+        source: "system", // Mark as coming from system without API call
       };
-      
+
       // Just set the welcome message directly without AI processing
       setMessages([welcomeMessage]);
-      
+
       // Speak the welcome message after a short delay using direct speech synthesis
       // to avoid triggering Gemini API calls for the welcome message
       const speakWelcome = async () => {
@@ -298,18 +331,18 @@ messages/channels, and managing Google Calendar events.`,
                 },
                 {
                   headers: {
-                    'xi-api-key': elevenLabsApiKey,
-                    'Content-Type': 'application/json',
+                    "xi-api-key": elevenLabsApiKey,
+                    "Content-Type": "application/json",
                   },
-                  responseType: 'arraybuffer',
+                  responseType: "arraybuffer",
                 }
               );
-              
-              const blob = new Blob([response.data], { type: 'audio/mpeg' });
+
+              const blob = new Blob([response.data], { type: "audio/mpeg" });
               const url = URL.createObjectURL(blob);
               audio.src = url;
               await audio.play();
-              
+
               audio.onended = () => {
                 URL.revokeObjectURL(url);
               };
@@ -325,7 +358,7 @@ messages/channels, and managing Google Calendar events.`,
             window.speechSynthesis.speak(utterance);
           }
         }
-        
+
         // After welcome message, fetch workspace overview
         setTimeout(() => {
           getWorkspaceOverview();
@@ -379,69 +412,108 @@ messages/channels, and managing Google Calendar events.`,
           setLastIntent(intentResult.intent);
         } catch (intentError) {
           console.warn("Intent detection failed, using fallback:", intentError);
-          
+
           // Check if it's an API key issue
-          const errorMessage = intentError instanceof Error ? intentError.message.toLowerCase() : '';
-          if (errorMessage.includes('api key expired') || 
-              errorMessage.includes('invalid api key') || 
-              errorMessage.includes('quota') || 
-              errorMessage.includes('rate limit')) {
-            
+          const errorMessage =
+            intentError instanceof Error
+              ? intentError.message.toLowerCase()
+              : "";
+          if (
+            errorMessage.includes("api key expired") ||
+            errorMessage.includes("invalid api key") ||
+            errorMessage.includes("quota") ||
+            errorMessage.includes("rate limit")
+          ) {
             setIsOfflineMode(true);
-            
-            if (errorMessage.includes('api key expired') || errorMessage.includes('invalid api key')) {
-              setApiErrorMessage('The Gemini API key has expired. Please contact the administrator to renew it.');
-            } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
-              setApiErrorMessage('The Gemini API quota has been exceeded. Please try again later.');
+
+            if (
+              errorMessage.includes("api key expired") ||
+              errorMessage.includes("invalid api key")
+            ) {
+              setApiErrorMessage(
+                "The Gemini API key has expired. Please contact the administrator to renew it."
+              );
+            } else if (
+              errorMessage.includes("quota") ||
+              errorMessage.includes("rate limit")
+            ) {
+              setApiErrorMessage(
+                "The Gemini API quota has been exceeded. Please try again later."
+              );
             }
           }
-          
-          intentResult = { intent: 'general', confidence: 0.5 };
-          setLastIntent('general');
+
+          intentResult = { intent: "general", confidence: 0.5 };
+          setLastIntent("general");
         }
 
         // Process with AI Assistant
         let response;
         try {
           response = await aiAssistant.sendMessage(userInput);
-          
+
           // Check if response indicates offline mode
-          if (response.includes("offline mode") || response.includes("API key")) {
+          if (
+            response.includes("offline mode") ||
+            response.includes("API key")
+          ) {
             setIsOfflineMode(true);
-            
+
             // Extract error message if present
             if (response.includes("API key has expired")) {
-              setApiErrorMessage('The Gemini API key has expired. Please contact the administrator to renew it.');
+              setApiErrorMessage(
+                "The Gemini API key has expired. Please contact the administrator to renew it."
+              );
             } else if (response.includes("quota has been exceeded")) {
-              setApiErrorMessage('The Gemini API quota has been exceeded. Please try again later.');
+              setApiErrorMessage(
+                "The Gemini API quota has been exceeded. Please try again later."
+              );
             } else {
-              setApiErrorMessage('Using offline mode due to API connection issues.');
+              setApiErrorMessage(
+                "Using offline mode due to API connection issues."
+              );
             }
           }
         } catch (err) {
           console.error("Error from AI service:", err);
-          
+
           // Check if it's an API key issue
-          const errorMessage = err instanceof Error ? err.message.toLowerCase() : '';
-          if (errorMessage.includes('api key expired') || 
-              errorMessage.includes('invalid api key') || 
-              errorMessage.includes('quota') || 
-              errorMessage.includes('rate limit')) {
-            
+          const errorMessage =
+            err instanceof Error ? err.message.toLowerCase() : "";
+          if (
+            errorMessage.includes("api key expired") ||
+            errorMessage.includes("invalid api key") ||
+            errorMessage.includes("quota") ||
+            errorMessage.includes("rate limit")
+          ) {
             setIsOfflineMode(true);
-            
-            if (errorMessage.includes('api key expired') || errorMessage.includes('invalid api key')) {
-              setApiErrorMessage('The Gemini API key has expired. Please contact the administrator to renew it.');
+
+            if (
+              errorMessage.includes("api key expired") ||
+              errorMessage.includes("invalid api key")
+            ) {
+              setApiErrorMessage(
+                "The Gemini API key has expired. Please contact the administrator to renew it."
+              );
               response = `I'm currently operating in offline mode. The Gemini API key has expired. Please contact the administrator to renew it. I'll still try to help with basic information about Notion, Discord, and Google Calendar.`;
-            } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
-              setApiErrorMessage('The Gemini API quota has been exceeded. Please try again later.');
+            } else if (
+              errorMessage.includes("quota") ||
+              errorMessage.includes("rate limit")
+            ) {
+              setApiErrorMessage(
+                "The Gemini API quota has been exceeded. Please try again later."
+              );
               response = `I'm currently operating in offline mode. The Gemini API quota has been exceeded. Please try again later. I'll still try to help with basic information about Notion, Discord, and Google Calendar.`;
             } else {
-              setApiErrorMessage('There was an issue connecting to the Gemini API.');
-              response = "I'm sorry, I encountered an issue processing your request. I'm currently operating in offline mode with limited capabilities.";
+              setApiErrorMessage(
+                "There was an issue connecting to the Gemini API."
+              );
+              response =
+                "I'm sorry, I encountered an issue processing your request. I'm currently operating in offline mode with limited capabilities.";
             }
           } else {
-            response = "I'm sorry, I encountered an issue processing your request. Please try again.";
+            response =
+              "I'm sorry, I encountered an issue processing your request. Please try again.";
           }
         }
 
@@ -452,7 +524,7 @@ messages/channels, and managing Google Calendar events.`,
           isUser: false,
           intent: intentResult.intent,
           intentConfidence: intentResult.confidence,
-          source: intentResult.intent === 'notion' ? 'notion' : 'gemini'
+          source: intentResult.intent === "notion" ? "notion" : "gemini",
         };
 
         setMessages((prev) => [...prev, aiMessage]);
@@ -463,27 +535,43 @@ messages/channels, and managing Google Calendar events.`,
         }
       } catch (error) {
         console.error("Error processing user input:", error);
-        
+
         // Check if it's an API key issue
-        const errorMessage = error instanceof Error ? error.message.toLowerCase() : '';
-        let responseText = "I'm sorry, I encountered an error processing your request. Please try again.";
-        
-        if (errorMessage.includes('api key expired') || 
-            errorMessage.includes('invalid api key') || 
-            errorMessage.includes('quota') || 
-            errorMessage.includes('rate limit')) {
-          
+        const errorMessage =
+          error instanceof Error ? error.message.toLowerCase() : "";
+        let responseText =
+          "I'm sorry, I encountered an error processing your request. Please try again.";
+
+        if (
+          errorMessage.includes("api key expired") ||
+          errorMessage.includes("invalid api key") ||
+          errorMessage.includes("quota") ||
+          errorMessage.includes("rate limit")
+        ) {
           setIsOfflineMode(true);
-          
-          if (errorMessage.includes('api key expired') || errorMessage.includes('invalid api key')) {
-            setApiErrorMessage('The Gemini API key has expired. Please contact the administrator to renew it.');
+
+          if (
+            errorMessage.includes("api key expired") ||
+            errorMessage.includes("invalid api key")
+          ) {
+            setApiErrorMessage(
+              "The Gemini API key has expired. Please contact the administrator to renew it."
+            );
             responseText = `I'm currently operating in offline mode. The Gemini API key has expired. Please contact the administrator to renew it. I'll still try to help with basic information about Notion, Discord, and Google Calendar.`;
-          } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
-            setApiErrorMessage('The Gemini API quota has been exceeded. Please try again later.');
+          } else if (
+            errorMessage.includes("quota") ||
+            errorMessage.includes("rate limit")
+          ) {
+            setApiErrorMessage(
+              "The Gemini API quota has been exceeded. Please try again later."
+            );
             responseText = `I'm currently operating in offline mode. The Gemini API quota has been exceeded. Please try again later. I'll still try to help with basic information about Notion, Discord, and Google Calendar.`;
           } else {
-            setApiErrorMessage('There was an issue connecting to the Gemini API.');
-            responseText = "I'm sorry, I encountered an issue processing your request. I'm currently operating in offline mode with limited capabilities.";
+            setApiErrorMessage(
+              "There was an issue connecting to the Gemini API."
+            );
+            responseText =
+              "I'm sorry, I encountered an issue processing your request. I'm currently operating in offline mode with limited capabilities.";
           }
         }
 
@@ -502,8 +590,9 @@ messages/channels, and managing Google Calendar events.`,
 
         toast({
           title: isOfflineMode ? "Offline Mode Active" : "Processing Error",
-          description: isOfflineMode 
-            ? apiErrorMessage || "Using offline mode due to API connection issues."
+          description: isOfflineMode
+            ? apiErrorMessage ||
+              "Using offline mode due to API connection issues."
             : "Failed to process your request. Please try again.",
           variant: isOfflineMode ? "warning" : "destructive",
         });
@@ -511,7 +600,14 @@ messages/channels, and managing Google Calendar events.`,
         setIsProcessing(false);
       }
     },
-    [isMuted, aiAssistant, toast, isOfflineMode, apiErrorMessage, generateMessageId]
+    [
+      isMuted,
+      aiAssistant,
+      toast,
+      isOfflineMode,
+      apiErrorMessage,
+      generateMessageId,
+    ]
   );
 
   // Add debouncing to prevent rapid clicking
@@ -598,18 +694,18 @@ messages/channels, and managing Google Calendar events.`,
             },
             {
               headers: {
-                'xi-api-key': elevenLabsApiKey,
-                'Content-Type': 'application/json',
+                "xi-api-key": elevenLabsApiKey,
+                "Content-Type": "application/json",
               },
-              responseType: 'arraybuffer',
+              responseType: "arraybuffer",
             }
           );
-          
-          const blob = new Blob([response.data], { type: 'audio/mpeg' });
+
+          const blob = new Blob([response.data], { type: "audio/mpeg" });
           const url = URL.createObjectURL(blob);
           audio.src = url;
           await audio.play();
-          
+
           audio.onended = () => {
             URL.revokeObjectURL(url);
           };
@@ -718,7 +814,7 @@ messages/channels, and managing Google Calendar events.`,
               </div>
             </div>
           )}
-          
+
           {/* Workspace Overview Button */}
           <div className="flex justify-end px-4 pt-3">
             <Button
@@ -733,10 +829,12 @@ messages/channels, and managing Google Calendar events.`,
               ) : (
                 <LayoutDashboard className="h-3 w-3 mr-1" />
               )}
-              {workspaceOverviewShown ? "Refresh Workspace" : "Show Workspace Overview"}
+              {workspaceOverviewShown
+                ? "Refresh Workspace"
+                : "Show Workspace Overview"}
             </Button>
           </div>
-          
+
           {/* Status Header */}
           {(speechRecognition.isListening || isProcessing) && (
             <div className="mb-6 flex items-center justify-center">
@@ -793,7 +891,7 @@ messages/channels, and managing Google Calendar events.`,
                 </span>
               </div>
             )}
-            
+
             <AnimatePresence>
               {messages.map((message) => (
                 <motion.div
@@ -819,30 +917,34 @@ messages/channels, and managing Google Calendar events.`,
                   >
                     {!message.isUser && (
                       <div className="flex items-center space-x-2 mb-2">
-                        <div className={`w-2 h-2 ${
-                          message.source === "notion" 
-                            ? "bg-blue-400" 
-                            : message.source === "discord"
-                            ? "bg-green-400"
-                            : message.source === "calendar"
-                            ? "bg-yellow-400"
-                            : message.source === "system"
-                            ? "bg-indigo-400"
-                            : "bg-purple-400"
-                        } rounded-full`}></div>
-                        <span className={`text-xs font-medium ${
-                          message.source === "notion" 
-                            ? "text-blue-400" 
-                            : message.source === "discord"
-                            ? "text-green-400"
-                            : message.source === "calendar"
-                            ? "text-yellow-400"
-                            : message.source === "system"
-                            ? "text-indigo-400"
-                            : "text-purple-400"
-                        }`}>
-                          {message.source === "notion" 
-                            ? "Notion Assistant" 
+                        <div
+                          className={`w-2 h-2 ${
+                            message.source === "notion"
+                              ? "bg-blue-400"
+                              : message.source === "discord"
+                              ? "bg-green-400"
+                              : message.source === "calendar"
+                              ? "bg-yellow-400"
+                              : message.source === "system"
+                              ? "bg-indigo-400"
+                              : "bg-purple-400"
+                          } rounded-full`}
+                        ></div>
+                        <span
+                          className={`text-xs font-medium ${
+                            message.source === "notion"
+                              ? "text-blue-400"
+                              : message.source === "discord"
+                              ? "text-green-400"
+                              : message.source === "calendar"
+                              ? "text-yellow-400"
+                              : message.source === "system"
+                              ? "text-indigo-400"
+                              : "text-purple-400"
+                          }`}
+                        >
+                          {message.source === "notion"
+                            ? "Notion Assistant"
                             : message.source === "discord"
                             ? "Discord Assistant"
                             : message.source === "calendar"
@@ -850,9 +952,13 @@ messages/channels, and managing Google Calendar events.`,
                             : message.source === "system"
                             ? "System Message"
                             : "Assistant"}
-                          {isOfflineMode && message.timestamp > new Date(Date.now() - 60000) && (
-                            <span className="ml-2 text-amber-300 text-xs">(Offline)</span>
-                          )}
+                          {isOfflineMode &&
+                            message.timestamp >
+                              new Date(Date.now() - 60000) && (
+                              <span className="ml-2 text-amber-300 text-xs">
+                                (Offline)
+                              </span>
+                            )}
                         </span>
                       </div>
                     )}
@@ -895,13 +1001,17 @@ messages/channels, and managing Google Calendar events.`,
                     </div>
                     <span className="text-xs text-purple-400">
                       Assistant is thinking...
-                      {isOfflineMode && <span className="ml-2 text-amber-300">(Offline Mode)</span>}
+                      {isOfflineMode && (
+                        <span className="ml-2 text-amber-300">
+                          (Offline Mode)
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
               </motion.div>
             )}
-            
+
             {/* Workspace Loading Indicator */}
             {isLoadingWorkspace && (
               <motion.div
@@ -928,7 +1038,8 @@ messages/channels, and managing Google Calendar events.`,
                 <div className="flex items-center text-xs text-amber-300">
                   <AlertTriangle className="h-3 w-3 mr-2 text-amber-400" />
                   <span>
-                    {apiErrorMessage || "Operating in offline mode with limited capabilities."}
+                    {apiErrorMessage ||
+                      "Operating in offline mode with limited capabilities."}
                   </span>
                 </div>
               </div>
@@ -939,13 +1050,17 @@ messages/channels, and managing Google Calendar events.`,
                   type="text"
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
-                  placeholder={isOfflineMode 
-                    ? "AI is in offline mode, but you can still ask questions..." 
-                    : "Type a message or click the animation above for voice :)"}
+                  placeholder={
+                    isOfflineMode
+                      ? "AI is in offline mode, but you can still ask questions..."
+                      : "Type a message or click the animation above for voice :)"
+                  }
                   className={`flex-1 bg-gray-800/80 border ${
                     isOfflineMode ? "border-amber-500/30" : "border-gray-600/40"
                   } rounded-xl px-4 py-2 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 ${
-                    isOfflineMode ? "focus:ring-amber-400" : "focus:ring-purple-400"
+                    isOfflineMode
+                      ? "focus:ring-amber-400"
+                      : "focus:ring-purple-400"
                   } focus:border-purple-400/50 focus:bg-gray-800 backdrop-blur-sm transition-all duration-200`}
                   disabled={isProcessing}
                   aria-label="Type your message"
@@ -954,8 +1069,8 @@ messages/channels, and managing Google Calendar events.`,
                   type="submit"
                   disabled={!textInput.trim() || isProcessing}
                   className={`px-4 py-2 ${
-                    isOfflineMode 
-                      ? "bg-gradient-to-r from-amber-600 to-orange-600" 
+                    isOfflineMode
+                      ? "bg-gradient-to-r from-amber-600 to-orange-600"
                       : "bg-gradient-to-r from-purple-600 to-blue-600"
                   } text-white text-sm font-medium rounded-xl hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105`}
                   aria-label="Send message"
