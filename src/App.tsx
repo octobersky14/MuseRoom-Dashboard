@@ -4,6 +4,7 @@ import { VoiceAgent } from "./components/VoiceAgent";
 import { DiscordMessages } from "./components/DiscordMessages";
 import { NotionWorkspaceEnhanced } from "./components/NotionWorkspaceEnhanced";
 import NotionIntegrationTest from "./components/NotionIntegrationTest";
+import NotionMcpDemo from "./components/NotionMcpDemo";
 import { Toaster } from "./components/ui/toaster";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
@@ -15,6 +16,7 @@ import {
   Brain,
   BookOpen,
   WifiOff,
+  Database,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { SplashCursor } from "./components/ui/splash-cursor";
@@ -39,7 +41,7 @@ function App() {
   const [showChat, setShowChat] = useState(false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [activeAssistant, setActiveAssistant] = useState<
-    "general" | "discord" | "notion"
+    "general" | "discord" | "notion" | "notion-mcp"
   >("general");
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState("");
@@ -80,6 +82,12 @@ function App() {
         ) {
           setActiveAssistant("notion");
         } else if (
+          data?.target === "notion-mcp" ||
+          data?.target === "mcp" ||
+          data?.target === "notion mcp"
+        ) {
+          setActiveAssistant("notion-mcp");
+        } else if (
           data?.target === "voice" ||
           data?.target === "voice assistant" ||
           data?.target === "general" ||
@@ -94,6 +102,9 @@ function App() {
       case "show_workspace":
       case "show_notion":
         setActiveAssistant("notion");
+        break;
+      case "show_notion_mcp":
+        setActiveAssistant("notion-mcp");
         break;
       case "voice_mode":
         setActiveAssistant("general");
@@ -382,11 +393,11 @@ function App() {
                       value={activeAssistant}
                       onValueChange={(value) =>
                         setActiveAssistant(
-                          value as "general" | "discord" | "notion"
+                          value as "general" | "discord" | "notion" | "notion-mcp"
                         )
                       }
                     >
-                      <TabsList className="grid w-full grid-cols-3 bg-gray-800/60 border border-gray-600/30">
+                      <TabsList className="grid w-full grid-cols-4 bg-gray-800/60 border border-gray-600/30">
                         <TabsTrigger
                           value="general"
                           className="flex items-center gap-2 data-[state=active]:bg-purple-600/20 data-[state=active]:text-purple-300"
@@ -407,6 +418,13 @@ function App() {
                         >
                           <BookOpen className="w-4 h-4" />
                           Notion Workspace
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="notion-mcp"
+                          className="flex items-center gap-2 data-[state=active]:bg-teal-600/20 data-[state=active]:text-teal-300"
+                        >
+                          <Database className="w-4 h-4" />
+                          Notion MCP
                         </TabsTrigger>
                       </TabsList>
 
@@ -435,6 +453,10 @@ function App() {
                             <NotionIntegrationTest />
                           </div>
                         </>
+                      </TabsContent>
+
+                      <TabsContent value="notion-mcp" className="mt-0 p-0">
+                        <NotionMcpDemo />
                       </TabsContent>
                     </Tabs>
                   </Card>

@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
-    "proxy": "node server.js"
+    "proxy": "node server.js",
+    "mcp:direct": "./run-mcp-services.sh --mode direct",
+    "mcp:proxy": "./run-mcp-services.sh --mode proxy",
+    "mcp:offline": "./run-mcp-services.sh --mode offline",
+    "start": "npm run build && npm run preview"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.33.0",

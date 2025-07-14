@@ -8,6 +8,14 @@ import NotionService, {
   CreatePageRequest,
   UpdatePageRequest
 } from '@/services/notionService';
+import NotionMcpService, {
+  ConnectionStatus, 
+  AuthStatus,
+  McpPageResponse,
+  McpDatabaseResponse,
+  McpCreatePageRequest,
+  McpUpdatePageRequest
+} from '@/services/notionMcpService';
 
 // Define message interface
 export interface Message {
@@ -25,6 +33,8 @@ interface UseAIAssistantReturn {
   messages: Message[];
   isLoading: boolean;
   error: Error | null;
+  isOfflineMode: boolean;
+  apiErrorMessage: string;
   sendMessage: (message: string) => Promise<string>;
   clearMessages: () => void;
   detectIntent: (message: string) => Promise<{
@@ -42,10 +52,15 @@ interface UseAIAssistantReturn {
     action?: string;
   } | null;
   // Notion-specific functions
-  notionService: NotionService;
+  notionService: NotionService | null;
+  notionMcpService: NotionMcpService | null;
+  notionConnectionStatus: ConnectionStatus;
+  notionAuthStatus: AuthStatus;
+  connectToNotion: () => Promise<void>;
+  authenticateNotion: () => Promise<void>;
   getNotionPages: () => Promise<NotionPage[]>;
   getNotionDatabases: () => Promise<NotionDatabase[]>;
-  createNotionPage: (request: CreatePageRequest) => Promise<NotionPage>;
+  createNotionPage: (request: CreatePageRequest | McpCreatePageRequest) => Promise<NotionPage | McpPageResponse>;
   searchNotion: (query: string) => Promise<{
     results: (NotionPage | NotionDatabase)[];
     next_cursor?: string;
@@ -69,11 +84,13 @@ interface UseAIAssistantOptions {
   initialMessages?: Message[];
   onError?: (error: Error) => void;
   onIntentDetected?: (intent: string, confidence: number, action?: string) => void;
+  notionMcpMode?: 'direct' | 'proxy' | 'offline';
+  notionMcpUrl?: string;
 }
 
 /**
  * React hook for a unified AI assistant that integrates Gemini with Notion
- * using the proxy server to avoid CORS issues
+ * using either the official Notion MCP, proxy server, or offline mode
  */
 export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssistantReturn => {
   // Extract options with defaults
@@ -87,6 +104,8 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
     initialMessages = [],
     onError,
     onIntentDetected,
+    notionMcpMode = (import.meta.env.VITE_NOTION_MCP_MODE as 'direct' | 'proxy' | 'offline') || 'direct',
+    notionMcpUrl = import.meta.env.VITE_NOTION_MCP_URL || 'https://mcp.notion.com/sse'
   } = options;
 
   // State
@@ -101,12 +120,15 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
   } | null>(null);
 
   /* Offline-mode / API-error handling */
-  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false);
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(notionMcpMode === 'offline');
   const [apiErrorMessage, setApiErrorMessage] = useState<string>('');
+  const [notionConnectionStatus, setNotionConnectionStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
+  const [notionAuthStatus, setNotionAuthStatus] = useState<AuthStatus>(AuthStatus.UNAUTHENTICATED);
 
   // Refs
   const geminiServiceRef = useRef<GeminiService | null>(null);
   const notionServiceRef = useRef<NotionService | null>(null);
+  const notionMcpServiceRef = useRef<NotionMcpService | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Initialize services
@@ -165,10 +187,37 @@ messages/channels, and managing Google Calendar events.`
       if (onError) onError(new Error('Gemini API key is required'));
     }
 
-    // Initialize Notion service
+    // Initialize Notion service based on MCP mode
     if (notionApiKey) {
       try {
-        notionServiceRef.current = new NotionService(notionApiKey);
+        // Always initialize the proxy-based NotionService as a fallback
+        if (notionMcpMode === 'proxy' || notionMcpMode === 'direct') {
+          notionServiceRef.current = new NotionService(notionApiKey);
+        }
+        
+        // Initialize NotionMcpService if using direct MCP or offline mode
+        if (notionMcpMode === 'direct' || notionMcpMode === 'offline') {
+          notionMcpServiceRef.current = new NotionMcpService({
+            notionApiKey,
+            mcpServerUrl: notionMcpUrl,
+            useFallback: notionMcpMode === 'direct', // Enable fallback for direct mode
+            onStatusChange: (status) => {
+              setNotionConnectionStatus(status);
+              if (status === ConnectionStatus.OFFLINE) {
+                setIsOfflineMode(true);
+                setApiErrorMessage(notionMcpServiceRef.current?.getOfflineErrorMessage() || 'Notion MCP is offline');
+              }
+            },
+            onAuthStatusChange: (status) => {
+              setNotionAuthStatus(status);
+            }
+          });
+          
+          // If offline mode is explicitly requested, enable it
+          if (notionMcpMode === 'offline') {
+            notionMcpServiceRef.current.enableOfflineMode('Offline mode selected in configuration');
+          }
+        }
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to initialize Notion service');
         setError(error);
@@ -184,8 +233,44 @@ messages/channels, and managing Google Calendar events.`
         audioRef.current.pause();
         audioRef.current = null;
       }
+      
+      if (notionMcpServiceRef.current) {
+        notionMcpServiceRef.current.disconnect();
+      }
     };
-  }, [geminiApiKey, notionApiKey, systemInstruction, onError]);
+  }, [geminiApiKey, notionApiKey, systemInstruction, onError, notionMcpMode, notionMcpUrl]);
+
+  // Connect to Notion MCP
+  const connectToNotion = useCallback(async (): Promise<void> => {
+    if (notionMcpServiceRef.current) {
+      try {
+        await notionMcpServiceRef.current.connect();
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Failed to connect to Notion MCP');
+        setError(error);
+        if (onError) onError(error);
+        throw error;
+      }
+    } else {
+      throw new Error('Notion MCP service not initialized');
+    }
+  }, [onError]);
+
+  // Authenticate with Notion MCP
+  const authenticateNotion = useCallback(async (): Promise<void> => {
+    if (notionMcpServiceRef.current) {
+      try {
+        await notionMcpServiceRef.current.authenticate();
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Failed to authenticate with Notion MCP');
+        setError(error);
+        if (onError) onError(error);
+        throw error;
+      }
+    } else {
+      throw new Error('Notion MCP service not initialized');
+    }
+  }, [onError]);
 
   // Generate a unique ID for messages
   const generateId = useCallback(() => {
@@ -248,8 +333,111 @@ messages/channels, and managing Google Calendar events.`
       resourceType: 'page' | 'database' | 'block' | 'user',
       params?: Record<string, any>
     ) => {
+      // Try MCP service first if available
+      if (notionMcpServiceRef.current) {
+        try {
+          let result;
+          
+          switch (action) {
+            case 'search':
+              result = await notionMcpServiceRef.current.search(params?.query, params?.filter);
+              break;
+            case 'list':
+              if (resourceType === 'page') {
+                result = await notionMcpServiceRef.current.getAllPages();
+              } else if (resourceType === 'database') {
+                result = await notionMcpServiceRef.current.getAllDatabases();
+              } else {
+                throw new Error(`Listing ${resourceType} is not supported`);
+              }
+              break;
+            case 'read':
+              if (resourceType === 'page') {
+                if (params?.id) {
+                  result = await notionMcpServiceRef.current.view('page', params.id);
+                } else {
+                  throw new Error('Page ID is required');
+                }
+              } else if (resourceType === 'database') {
+                if (params?.id) {
+                  result = await notionMcpServiceRef.current.view('database', params.id);
+                } else {
+                  throw new Error('Database ID is required');
+                }
+              } else if (resourceType === 'block') {
+                if (params?.id) {
+                  result = await notionMcpServiceRef.current.view('block', params.id);
+                } else {
+                  throw new Error('Block ID is required');
+                }
+              } else {
+                throw new Error(`Reading ${resourceType} is not supported`);
+              }
+              break;
+            case 'create':
+              if (resourceType === 'page') {
+                if (params?.request) {
+                  result = await notionMcpServiceRef.current.createPage(params.request);
+                } else {
+                  throw new Error('Page creation request is required');
+                }
+              } else {
+                throw new Error(`Creating ${resourceType} is not supported`);
+              }
+              break;
+            case 'update':
+              if (resourceType === 'page') {
+                if (params?.id && params?.request) {
+                  result = await notionMcpServiceRef.current.updatePage({
+                    page_id: params.id,
+                    ...params.request
+                  });
+                } else {
+                  throw new Error('Page ID and update request are required');
+                }
+              } else {
+                throw new Error(`Updating ${resourceType} is not supported`);
+              }
+              break;
+            default:
+              throw new Error(`Action ${action} is not supported by Notion MCP`);
+          }
+
+          return result;
+        } catch (err) {
+          // If MCP fails and we have a fallback service, try that instead
+          if (notionServiceRef.current) {
+            console.warn(`Notion MCP action failed, falling back to proxy: ${err}`);
+            return performNotionActionWithProxy(action, resourceType, params);
+          }
+          
+          // Otherwise, propagate the error
+          const error = err instanceof Error 
+            ? err 
+            : new Error(`Failed to perform Notion MCP action: ${action} on ${resourceType}`);
+          setError(error);
+          if (onError) onError(error);
+          throw error;
+        }
+      } else if (notionServiceRef.current) {
+        // If no MCP service, use the proxy service
+        return performNotionActionWithProxy(action, resourceType, params);
+      } else {
+        throw new Error('No Notion service is available');
+      }
+    },
+    [onError]
+  );
+
+  // Helper function to perform action with proxy-based NotionService
+  const performNotionActionWithProxy = useCallback(
+    async (
+      action: 'create' | 'read' | 'update' | 'delete' | 'search' | 'list',
+      resourceType: 'page' | 'database' | 'block' | 'user',
+      params?: Record<string, any>
+    ) => {
       if (!notionServiceRef.current) {
-        throw new Error('Notion service not initialized');
+        throw new Error('Notion proxy service not initialized');
       }
 
       try {
@@ -338,7 +526,7 @@ messages/channels, and managing Google Calendar events.`
         throw error;
       }
     },
-    [onError]
+    [onError, notionServiceRef]
   );
 
   // Wrapper functions for common Notion operations
@@ -350,7 +538,7 @@ messages/channels, and managing Google Calendar events.`
     return performNotionAction('list', 'database');
   }, [performNotionAction]);
 
-  const createNotionPage = useCallback(async (request: CreatePageRequest) => {
+  const createNotionPage = useCallback(async (request: CreatePageRequest | McpCreatePageRequest) => {
     return performNotionAction('create', 'page', { request });
   }, [performNotionAction]);
 
@@ -362,15 +550,15 @@ messages/channels, and managing Google Calendar events.`
   const processMessageWithNotionContext = useCallback(
     async (messageText: string, intentResult: any): Promise<string> => {
       // If it's a Notion-related intent, augment the AI response with actual Notion data
-      if (intentResult.intent === 'notion' && notionServiceRef.current) {
+      if (intentResult.intent === 'notion') {
         try {
           let notionContext = '';
           
           // Based on the detected action, fetch relevant Notion data
           if (intentResult.action === 'search' || intentResult.action === 'list') {
             // Get pages and databases to provide context
-            const pages = await notionServiceRef.current.getAllPages();
-            const databases = await notionServiceRef.current.getAllDatabases();
+            const pages = await getNotionPages();
+            const databases = await getNotionDatabases();
             
             notionContext = `
               I found ${pages.length} pages and ${databases.length} databases in your Notion workspace.
@@ -386,14 +574,34 @@ messages/channels, and managing Google Calendar events.`
           } else if (intentResult.action === 'read' && intentResult.params?.resourceId) {
             // Fetch specific page content
             const pageId = intentResult.params.resourceId;
-            const page = await notionServiceRef.current.getPage(pageId);
-            const content = await notionServiceRef.current.getPageContent(pageId);
             
-            notionContext = `
-              Page Title: ${page.title || 'Untitled'}
-              Last Edited: ${new Date(page.last_edited_time).toLocaleString()}
-              Content: ${content.length} blocks
-            `;
+            try {
+              let pageData;
+              let content;
+              
+              // Try to get the page data using the appropriate service
+              if (notionMcpServiceRef.current) {
+                pageData = await notionMcpServiceRef.current.view('page', pageId);
+                content = pageData.content || '';
+              } else if (notionServiceRef.current) {
+                pageData = await notionServiceRef.current.getPage(pageId);
+                content = await notionServiceRef.current.getPageContent(pageId);
+              }
+              
+              if (pageData) {
+                notionContext = `
+                  Page Title: ${pageData.title || 'Untitled'}
+                  Last Edited: ${new Date(pageData.last_edited_time).toLocaleString()}
+                  Content: ${typeof content === 'string' ? content : JSON.stringify(content)}
+                `;
+              }
+            } catch (error) {
+              console.error('Error fetching page content:', error);
+              notionContext = `
+                I encountered an error fetching the page with ID ${pageId}.
+                Please check if the page exists and you have access to it.
+              `;
+            }
           }
           
           // Now send the user message along with the Notion context to Gemini
@@ -425,7 +633,7 @@ messages/channels, and managing Google Calendar events.`
       
       throw new Error('Neither Gemini nor Notion services are available');
     },
-    [notionServiceRef, geminiServiceRef]
+    [getNotionPages, getNotionDatabases]
   );
 
   // Send a message to the AI and get a response
@@ -644,7 +852,12 @@ messages/channels, and managing Google Calendar events.`
     isSpeaking,
     lastDetectedIntent,
     // Notion-specific functions
-    notionService: notionServiceRef.current as NotionService,
+    notionService: notionServiceRef.current,
+    notionMcpService: notionMcpServiceRef.current,
+    notionConnectionStatus,
+    notionAuthStatus,
+    connectToNotion,
+    authenticateNotion,
     getNotionPages,
     getNotionDatabases,
     createNotionPage,
