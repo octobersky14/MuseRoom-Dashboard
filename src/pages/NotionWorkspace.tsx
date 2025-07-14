@@ -39,7 +39,10 @@ const NotionWorkspace: React.FC = () => {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(99,102,241,0.06),transparent_70%)] pointer-events-none z-2" />
 
       {/* Main Content - adjusted for sidebar */}
-      <div className="container mx-auto px-4 py-6 relative z-10 ml-[72px] md:ml-[240px] transition-all duration-300">
+      {/* Shifted by 80 px to account for collapsed sidebar width.
+          The sidebar expands over content on hover, so a fixed 80 px offset
+          keeps alignment without hard-coding the expanded width. */}
+      <div className="container mx-auto px-4 py-6 relative z-10 transition-all duration-300">
         <div className="max-w-6xl mx-auto">
           {/* Header Section */}
           <motion.div

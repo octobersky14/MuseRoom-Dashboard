@@ -17,6 +17,8 @@ function App() {
   // Keep only necessary state
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState("");
+  // Track sidebar width so content shifts when it expands/collapses
+  const [sidebarWidth, setSidebarWidth] = useState<number>(80);
 
   // Check Gemini API key validity on mount to determine offline mode
   useEffect(() => {
@@ -42,6 +44,19 @@ function App() {
     verifyApiKey();
   }, []);
 
+  // Ensure dark mode is always enabled
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+    return () => {
+      document.documentElement.classList.remove("dark");
+    };
+  }, []);
+
+  // Callback when sidebar width changes
+  const handleSidebarWidth = (width: number) => {
+    setSidebarWidth(width);
+  };
+
   return (
     <AuthWrapper>
       <BrowserRouter>
@@ -62,10 +77,13 @@ function App() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(139,92,246,0.05),transparent_70%)] pointer-events-none" />
 
           {/* Sidebar */}
-          <Sidebar />
+          <Sidebar onWidthChange={handleSidebarWidth} />
 
           {/* Main Content Area */}
-          <main className={`relative z-10 ${isOfflineMode ? "pt-10" : ""}`}>
+          <main
+            className={`relative z-10 ${isOfflineMode ? "pt-10" : ""}`}
+            style={{ marginLeft: `${sidebarWidth}px`, transition: "margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          >
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/notion" element={<NotionWorkspace />} />

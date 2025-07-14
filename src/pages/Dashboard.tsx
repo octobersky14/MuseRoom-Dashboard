@@ -72,8 +72,11 @@ const Dashboard: React.FC = () => {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(139,92,246,0.08),transparent_70%)] pointer-events-none z-2" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.06),transparent_70%)] pointer-events-none z-2" />
 
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-6 relative z-10 ml-[72px] md:ml-[240px] transition-all duration-300">
+      {/* Main Content (shifted to account for the 80 px collapsed sidebar;
+          the sidebar expands over the content on hover, so a fixed offset
+          of 80 px keeps things aligned without hard-coding the expanded
+          width) */}
+      <div className="container mx-auto px-4 py-6 relative z-10 transition-all duration-300">
         <div className="max-w-6xl mx-auto">
           {/* Header Section */}
           <motion.div
