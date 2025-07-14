@@ -16,9 +16,31 @@ const NotionWorkspace: React.FC = () => {
   const { toast } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Always keep the application in dark mode
+  // Strong dark-mode enforcement (never allow light mode)
   useEffect(() => {
+    // 1) Ensure dark mode initially
     document.documentElement.classList.add("dark");
+
+    // 2) Watch for any removal of the `dark` class and immediately restore it
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (
+          mutation.type === "attributes" &&
+          mutation.attributeName === "class" &&
+          !document.documentElement.classList.contains("dark")
+        ) {
+          document.documentElement.classList.add("dark");
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+
+    // 3) Cleanup – stop observing but keep dark mode active
+    return () => {
+      observer.disconnect();
+      document.documentElement.classList.add("dark");
+    };
   }, []);
 
   // Handle refresh action

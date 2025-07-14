@@ -37,6 +37,10 @@ import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SplashCursor } from "@/components/ui/splash-cursor";
+import { useSidebar } from "@/components/layout/Sidebar";
+
+// Audio for notification sounds
+const notificationSound = new Audio('/sounds/notification.mp3');
 
 // Mock OAuth services - in a real app, these would be actual OAuth implementations
 const mockDiscordOAuth = {
@@ -79,6 +83,14 @@ const mockGoogleOAuth = {
   signOut: () => new Promise<boolean>(resolve => {
     setTimeout(() => resolve(true), 800);
   })
+};
+
+// Local storage keys
+const STORAGE_KEYS = {
+  APPEARANCE: 'museroom-appearance-settings',
+  NOTIFICATIONS: 'museroom-notification-settings',
+  API_KEYS: 'museroom-api-keys',
+  ACCOUNT: 'museroom-account-info'
 };
 
 const Settings: React.FC = () => {
@@ -124,9 +136,8 @@ const Settings: React.FC = () => {
   });
   const [isSavingApiKeys, setIsSavingApiKeys] = useState(false);
   
-  // Appearance settings
+  // Appearance settings - Removed theme property as requested
   const [appearanceSettings, setAppearanceSettings] = useState({
-    theme: "dark",
     animationsEnabled: true,
     glassEffectsEnabled: true,
     sidebarCollapsed: true,
@@ -145,14 +156,136 @@ const Settings: React.FC = () => {
   });
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
 
-  // Enable dark mode
+  // Load settings from localStorage on component mount
   useEffect(() => {
+    // Load appearance settings
+    const savedAppearance = localStorage.getItem(STORAGE_KEYS.APPEARANCE);
+    if (savedAppearance) {
+      try {
+        const parsedSettings = JSON.parse(savedAppearance);
+        setAppearanceSettings(prevSettings => ({
+          ...prevSettings,
+          ...parsedSettings
+        }));
+      } catch (error) {
+        console.error('Failed to parse appearance settings:', error);
+      }
+    }
+
+    // Load notification settings
+    const savedNotifications = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
+    if (savedNotifications) {
+      try {
+        const parsedSettings = JSON.parse(savedNotifications);
+        setNotificationSettings(prevSettings => ({
+          ...prevSettings,
+          ...parsedSettings
+        }));
+      } catch (error) {
+        console.error('Failed to parse notification settings:', error);
+      }
+    }
+
+    // Load API keys (in a real app, these would be securely stored)
+    const savedApiKeys = localStorage.getItem(STORAGE_KEYS.API_KEYS);
+    if (savedApiKeys) {
+      try {
+        const parsedKeys = JSON.parse(savedApiKeys);
+        setApiKeys(prevKeys => ({
+          ...prevKeys,
+          ...parsedKeys
+        }));
+      } catch (error) {
+        console.error('Failed to parse API keys:', error);
+      }
+    }
+
+    // Load account info
+    const savedAccount = localStorage.getItem(STORAGE_KEYS.ACCOUNT);
+    if (savedAccount) {
+      try {
+        const parsedAccount = JSON.parse(savedAccount);
+        if (parsedAccount.username) setUsername(parsedAccount.username);
+        if (parsedAccount.email) setEmail(parsedAccount.email);
+      } catch (error) {
+        console.error('Failed to parse account info:', error);
+      }
+    }
+  }, []);
+
+  // Stronger dark mode enforcement that NEVER allows light mode
+  useEffect(() => {
+    // Add dark mode class
     document.documentElement.classList.add("dark");
+    
+    // Create a MutationObserver to ensure dark mode is never removed
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && 
+            mutation.attributeName === 'class' && 
+            !document.documentElement.classList.contains('dark')) {
+          // Re-add dark class if it was removed
+          document.documentElement.classList.add("dark");
+        }
+      });
+    });
+    
+    // Start observing document.documentElement for class changes
+    observer.observe(document.documentElement, { attributes: true });
+    
+    // Do NOT remove dark class on unmount
     return () => {
-      // Only remove if we added it
-      document.documentElement.classList.remove("dark");
+      observer.disconnect();
+      // Explicitly ensure dark mode remains when component unmounts
+      document.documentElement.classList.add("dark");
     };
   }, []);
+
+  // Apply appearance settings when they change
+  useEffect(() => {
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEYS.APPEARANCE, JSON.stringify(appearanceSettings));
+
+    // Apply animations setting
+    if (appearanceSettings.animationsEnabled) {
+      document.documentElement.classList.remove('reduce-motion');
+      document.documentElement.style.setProperty('--animate-duration', '0.3s');
+    } else {
+      document.documentElement.classList.add('reduce-motion');
+      document.documentElement.style.setProperty('--animate-duration', '0s');
+    }
+
+    // Apply glass effects setting
+    if (appearanceSettings.glassEffectsEnabled) {
+      document.documentElement.classList.remove('no-glass');
+      document.documentElement.style.setProperty('--blur-amount', '8px');
+    } else {
+      document.documentElement.classList.add('no-glass');
+      document.documentElement.style.setProperty('--blur-amount', '0px');
+    }
+
+    // Apply high contrast mode
+    if (appearanceSettings.highContrastMode) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+
+    // Note: We're not handling sidebarCollapsed here as we don't want toggles
+  }, [appearanceSettings]);
+
+  // Apply notification settings when they change
+  useEffect(() => {
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notificationSettings));
+
+    // Request browser notification permissions if enabled
+    if (notificationSettings.pushNotifications && "Notification" in window) {
+      if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+        Notification.requestPermission();
+      }
+    }
+  }, [notificationSettings]);
 
   // Handle Discord sign in
   const handleDiscordSignIn = async () => {
@@ -178,6 +311,11 @@ const Settings: React.FC = () => {
           description: `Successfully connected as ${result.data.username}#${result.data.discriminator}`,
           variant: "default",
         });
+
+        // Play notification sound if enabled
+        if (notificationSettings.soundEnabled) {
+          notificationSound.play().catch(e => console.error("Error playing sound:", e));
+        }
       } else {
         throw new Error(result.error || "Failed to connect to Discord");
       }
@@ -219,6 +357,11 @@ const Settings: React.FC = () => {
         description: "Successfully disconnected from Discord",
         variant: "default",
       });
+
+      // Play notification sound if enabled
+      if (notificationSettings.soundEnabled) {
+        notificationSound.play().catch(e => console.error("Error playing sound:", e));
+      }
     } catch (error) {
       setDiscordConnection(prev => ({
         ...prev,
@@ -258,6 +401,11 @@ const Settings: React.FC = () => {
           description: `Successfully connected as ${result.data.name}`,
           variant: "default",
         });
+
+        // Play notification sound if enabled
+        if (notificationSettings.soundEnabled) {
+          notificationSound.play().catch(e => console.error("Error playing sound:", e));
+        }
       } else {
         throw new Error(result.error || "Failed to connect to Google Calendar");
       }
@@ -299,6 +447,11 @@ const Settings: React.FC = () => {
         description: "Successfully disconnected from Google Calendar",
         variant: "default",
       });
+
+      // Play notification sound if enabled
+      if (notificationSettings.soundEnabled) {
+        notificationSound.play().catch(e => console.error("Error playing sound:", e));
+      }
     } catch (error) {
       setGoogleConnection(prev => ({
         ...prev,
@@ -318,6 +471,9 @@ const Settings: React.FC = () => {
   const handleSaveAccount = async () => {
     setIsSavingAccount(true);
     
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEYS.ACCOUNT, JSON.stringify({ username, email }));
+    
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     
@@ -328,11 +484,19 @@ const Settings: React.FC = () => {
       description: "Your account settings have been saved successfully",
       variant: "default",
     });
+
+    // Play notification sound if enabled
+    if (notificationSettings.soundEnabled) {
+      notificationSound.play().catch(e => console.error("Error playing sound:", e));
+    }
   };
   
   // Save API keys
   const handleSaveApiKeys = async () => {
     setIsSavingApiKeys(true);
+    
+    // Save to localStorage (in a real app, these would be securely stored)
+    localStorage.setItem(STORAGE_KEYS.API_KEYS, JSON.stringify(apiKeys));
     
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -344,11 +508,19 @@ const Settings: React.FC = () => {
       description: "Your API keys have been saved successfully",
       variant: "default",
     });
+
+    // Play notification sound if enabled
+    if (notificationSettings.soundEnabled) {
+      notificationSound.play().catch(e => console.error("Error playing sound:", e));
+    }
   };
   
   // Save appearance settings
   const handleSaveAppearance = async () => {
     setIsSavingAppearance(true);
+    
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEYS.APPEARANCE, JSON.stringify(appearanceSettings));
     
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -360,11 +532,19 @@ const Settings: React.FC = () => {
       description: "Your appearance settings have been saved successfully",
       variant: "default",
     });
+
+    // Play notification sound if enabled
+    if (notificationSettings.soundEnabled) {
+      notificationSound.play().catch(e => console.error("Error playing sound:", e));
+    }
   };
   
   // Save notification settings
   const handleSaveNotifications = async () => {
     setIsSavingNotifications(true);
+    
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notificationSettings));
     
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -376,6 +556,18 @@ const Settings: React.FC = () => {
       description: "Your notification settings have been saved successfully",
       variant: "default",
     });
+
+    // Play notification sound if enabled
+    if (notificationSettings.soundEnabled) {
+      notificationSound.play().catch(e => console.error("Error playing sound:", e));
+    }
+
+    // Request browser notification permissions if enabled
+    if (notificationSettings.pushNotifications && "Notification" in window) {
+      if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+        Notification.requestPermission();
+      }
+    }
   };
   
   // Toggle API key visibility
@@ -383,12 +575,72 @@ const Settings: React.FC = () => {
     setShowApiKeys(!showApiKeys);
   };
   
-  // Handle appearance setting change
+  // Handle appearance setting change - Removed theme handling
   const handleAppearanceChange = (key: keyof typeof appearanceSettings, value: any) => {
     setAppearanceSettings(prev => ({
       ...prev,
       [key]: value
     }));
+
+    // Apply changes immediately for better user experience
+    switch (key) {
+      case 'animationsEnabled':
+        if (value) {
+          document.documentElement.classList.remove('reduce-motion');
+          document.documentElement.style.setProperty('--animate-duration', '0.3s');
+          toast({
+            title: "Animations Enabled",
+            description: "UI animations and transitions are now active",
+          });
+        } else {
+          document.documentElement.classList.add('reduce-motion');
+          document.documentElement.style.setProperty('--animate-duration', '0s');
+          toast({
+            title: "Animations Disabled",
+            description: "UI animations and transitions are now disabled",
+          });
+        }
+        break;
+      
+      case 'glassEffectsEnabled':
+        if (value) {
+          document.documentElement.classList.remove('no-glass');
+          document.documentElement.style.setProperty('--blur-amount', '8px');
+          toast({
+            title: "Glass Effects Enabled",
+            description: "Frosted glass and blur effects are now active",
+          });
+        } else {
+          document.documentElement.classList.add('no-glass');
+          document.documentElement.style.setProperty('--blur-amount', '0px');
+          toast({
+            title: "Glass Effects Disabled",
+            description: "Frosted glass and blur effects are now disabled",
+          });
+        }
+        break;
+      
+      case 'highContrastMode':
+        if (value) {
+          document.documentElement.classList.add('high-contrast');
+          toast({
+            title: "High Contrast Mode Enabled",
+            description: "Improved visibility with stronger contrasts",
+          });
+        } else {
+          document.documentElement.classList.remove('high-contrast');
+          toast({
+            title: "High Contrast Mode Disabled",
+            description: "Standard contrast mode restored",
+          });
+        }
+        break;
+    }
+
+    // Play notification sound if enabled
+    if (notificationSettings.soundEnabled) {
+      notificationSound.play().catch(e => console.error("Error playing sound:", e));
+    }
   };
   
   // Handle notification setting change
@@ -397,6 +649,148 @@ const Settings: React.FC = () => {
       ...prev,
       [key]: value
     }));
+
+    // Apply changes immediately for better user experience
+    switch (key) {
+      case 'emailNotifications':
+        toast({
+          title: value ? "Email Notifications Enabled" : "Email Notifications Disabled",
+          description: value 
+            ? "You will now receive important updates via email" 
+            : "You will no longer receive email notifications",
+        });
+        break;
+      
+      case 'pushNotifications':
+        if (value && "Notification" in window) {
+          if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+              if (permission === "granted") {
+                toast({
+                  title: "Push Notifications Enabled",
+                  description: "You will now receive browser notifications",
+                });
+              } else {
+                toast({
+                  title: "Permission Denied",
+                  description: "Browser notification permission was denied",
+                  variant: "destructive",
+                });
+                // Update state to reflect actual permission
+                setNotificationSettings(prev => ({
+                  ...prev,
+                  pushNotifications: false
+                }));
+              }
+            });
+          } else if (Notification.permission === "granted") {
+            toast({
+              title: "Push Notifications Enabled",
+              description: "You will now receive browser notifications",
+            });
+          } else {
+            toast({
+              title: "Permission Required",
+              description: "Please enable notifications in your browser settings",
+              variant: "destructive",
+            });
+            // Update state to reflect actual permission
+            setNotificationSettings(prev => ({
+              ...prev,
+              pushNotifications: false
+            }));
+          }
+        } else if (!value) {
+          toast({
+            title: "Push Notifications Disabled",
+            description: "You will no longer receive browser notifications",
+          });
+        } else {
+          toast({
+            title: "Notifications Not Supported",
+            description: "Your browser doesn't support notifications",
+            variant: "destructive",
+          });
+          // Update state to reflect actual support
+          setNotificationSettings(prev => ({
+            ...prev,
+            pushNotifications: false
+          }));
+        }
+        break;
+      
+      case 'soundEnabled':
+        toast({
+          title: value ? "Notification Sounds Enabled" : "Notification Sounds Disabled",
+          description: value 
+            ? "Sound effects will play for notifications" 
+            : "Notifications will be silent",
+        });
+        
+        // Play a test sound if enabled
+        if (value) {
+          notificationSound.play().catch(e => console.error("Error playing sound:", e));
+        }
+        break;
+      
+      case 'discordNotifications':
+        if (!discordConnection.connected && value) {
+          toast({
+            title: "Discord Not Connected",
+            description: "Please connect your Discord account first",
+            variant: "destructive",
+          });
+          // Reset the toggle since Discord isn't connected
+          setNotificationSettings(prev => ({
+            ...prev,
+            discordNotifications: false
+          }));
+        } else {
+          toast({
+            title: value ? "Discord Notifications Enabled" : "Discord Notifications Disabled",
+            description: value 
+              ? "You will now receive notifications in Discord" 
+              : "You will no longer receive Discord notifications",
+          });
+        }
+        break;
+      
+      case 'notionUpdates':
+        toast({
+          title: value ? "Notion Updates Enabled" : "Notion Updates Disabled",
+          description: value 
+            ? "You will now receive notifications about Notion workspace changes" 
+            : "You will no longer receive Notion update notifications",
+        });
+        break;
+      
+      case 'calendarReminders':
+        if (!googleConnection.connected && value) {
+          toast({
+            title: "Google Calendar Not Connected",
+            description: "Please connect your Google Calendar account first",
+            variant: "destructive",
+          });
+          // Reset the toggle since Google Calendar isn't connected
+          setNotificationSettings(prev => ({
+            ...prev,
+            calendarReminders: false
+          }));
+        } else {
+          toast({
+            title: value ? "Calendar Reminders Enabled" : "Calendar Reminders Disabled",
+            description: value 
+              ? "You will now receive reminders for calendar events" 
+              : "You will no longer receive calendar reminders",
+          });
+        }
+        break;
+    }
+
+    // Play notification sound if enabled (except when toggling sound itself off)
+    if (notificationSettings.soundEnabled && key !== 'soundEnabled') {
+      notificationSound.play().catch(e => console.error("Error playing sound:", e));
+    }
   };
 
   return (
@@ -955,30 +1349,21 @@ const Settings: React.FC = () => {
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Theme Settings */}
+                        {/* Theme Settings - Replaced with permanent dark mode notice */}
                         <div className="space-y-4">
                           <h3 className="text-sm font-medium text-gray-300 mb-3">Theme</h3>
                           
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="theme-select" className="flex items-center">
-                              <Moon className="h-4 w-4 mr-2 text-blue-400" />
-                              Theme Mode
-                            </Label>
-                            <Select 
-                              value={appearanceSettings.theme} 
-                              onValueChange={(value) => handleAppearanceChange('theme', value)}
-                              disabled
-                            >
-                              <SelectTrigger className="w-36 bg-gray-800/60 border-gray-700/60">
-                                <SelectValue placeholder="Select theme" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-800 border-gray-700">
-                                <SelectItem value="dark">Dark (Default)</SelectItem>
-                                <SelectItem value="darker" disabled>Darker</SelectItem>
-                                <SelectItem value="synthwave" disabled>Synthwave</SelectItem>
-                                <SelectItem value="cyberpunk" disabled>Cyberpunk</SelectItem>
-                              </SelectContent>
-                            </Select>
+                          {/* Permanent Dark Mode Notice */}
+                          <div className="p-4 bg-gray-800/40 rounded-lg border border-purple-700/30">
+                            <div className="flex items-center space-x-2 text-gray-300">
+                              <Moon className="h-4 w-4 text-purple-400" />
+                              <p className="text-sm font-medium">
+                                Dark Mode Permanently Enabled
+                              </p>
+                            </div>
+                            <p className="mt-2 text-xs text-gray-400">
+                              MuseRoom Dashboard uses an exclusive dark theme optimized for reduced eye strain and futuristic aesthetics.
+                            </p>
                           </div>
                           
                           <div className="flex items-center justify-between">
@@ -1035,26 +1420,16 @@ const Settings: React.FC = () => {
                       
                       <Separator className="my-4 bg-gray-700/30" />
                       
-                      {/* Layout Settings */}
+                      {/* Layout Settings - Removed sidebar toggle as requested */}
                       <div className="space-y-4">
                         <h3 className="text-sm font-medium text-gray-300 mb-3">Layout</h3>
                         
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <Label htmlFor="sidebar-collapsed" className="flex items-center">
-                              <Layout className="h-4 w-4 mr-2 text-blue-400" />
-                              Sidebar Default State
-                            </Label>
-                            <p className="text-xs text-gray-400">Start with sidebar collapsed or expanded</p>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Label htmlFor="sidebar-collapsed" className="text-sm text-gray-400">Collapsed</Label>
-                            <Switch 
-                              id="sidebar-collapsed" 
-                              checked={appearanceSettings.sidebarCollapsed}
-                              onCheckedChange={(checked) => handleAppearanceChange('sidebarCollapsed', checked)}
-                            />
-                            <Label htmlFor="sidebar-collapsed" className="text-sm text-gray-400">Expanded</Label>
+                        <div className="p-4 bg-gray-800/40 rounded-lg border border-gray-700/40">
+                          <div className="flex items-center space-x-2 text-gray-300">
+                            <Info className="h-4 w-4 text-blue-400" />
+                            <p className="text-sm">
+                              The sidebar is set to start collapsed and expand on hover for a clean, minimal interface.
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -1064,7 +1439,6 @@ const Settings: React.FC = () => {
                         variant="outline" 
                         className="bg-gray-800/30 hover:bg-gray-700/50 border-gray-700/30"
                         onClick={() => setAppearanceSettings({
-                          theme: "dark",
                           animationsEnabled: true,
                           glassEffectsEnabled: true,
                           sidebarCollapsed: true,

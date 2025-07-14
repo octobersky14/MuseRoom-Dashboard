@@ -52,6 +52,37 @@ const Dashboard: React.FC = () => {
     { title: "Calendar Events", value: "12", icon: <Calendar className="h-4 w-4" />, color: "from-amber-500 to-amber-700" },
   ];
 
+  /* ----------------------------------------------------------------
+   *  Strong Dark-Mode Enforcement
+   *  – Always keep the `dark` class on <html>
+   *  – Re-add it immediately if something removes it (e.g. 3rd-party libs)
+   * ---------------------------------------------------------------- */
+  useEffect(() => {
+    // Ensure dark mode is set on first render
+    document.documentElement.classList.add("dark");
+
+    // MutationObserver to re-apply dark mode if removed
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (
+          mutation.type === "attributes" &&
+          mutation.attributeName === "class" &&
+          !document.documentElement.classList.contains("dark")
+        ) {
+          document.documentElement.classList.add("dark");
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+
+    // Cleanup – keep dark mode when unmounting
+    return () => {
+      observer.disconnect();
+      document.documentElement.classList.add("dark");
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
       {/* Background Effects */}
