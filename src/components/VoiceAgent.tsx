@@ -1,10 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
-import { Card, CardContent } from "./ui/card";
 import {
-  Volume2,
-  VolumeX,
-  Settings,
   Loader2,
   WifiOff,
   AlertTriangle,
@@ -14,9 +10,7 @@ import { useToast } from "./ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import { useAIAssistant } from "../hooks/useAIAssistant";
-import useDirectSpeechRecognition, {
-  RecognitionStatus,
-} from "../../useDirectSpeechRecognition";
+import useDirectSpeechRecognition from "../../useDirectSpeechRecognition";
 
 interface Message {
   id: string;
@@ -28,37 +22,27 @@ interface Message {
   source?: "gemini" | "notion" | "discord" | "calendar" | "system";
 }
 
-interface ElevenLabsVoice {
-  voice_id: string;
-  name: string;
-  preview_url?: string;
-}
-
 interface VoiceAgentProps {
   selectedVoice: string;
   useElevenLabs: boolean;
-  availableVoices: ElevenLabsVoice[];
   elevenLabsApiKey: string;
   initialPrompt?: string | null;
   onPromptHandled?: () => void;
   showChat?: boolean;
-  setShowChat?: (show: boolean) => void;
 }
 
 export function VoiceAgent({
   selectedVoice,
   useElevenLabs,
-  availableVoices,
   elevenLabsApiKey,
   initialPrompt,
   onPromptHandled,
   showChat = true,
-  setShowChat,
 }: VoiceAgentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentTranscript, setCurrentTranscript] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  // Setter is intentionally unused – rename with underscore to avoid TS6133
+  const [isMuted, _setIsMuted] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [lastIntent, setLastIntent] = useState<
@@ -169,14 +153,6 @@ messages/channels, and managing Google Calendar events.`,
   }, [aiAssistant.isOfflineMode, aiAssistant.apiErrorMessage]);
 
   // Handle user speech transcript
-  function handleUserTranscript(transcript: string) {
-    if (!transcript.trim()) return;
-
-    console.log("User transcript received:", transcript);
-    setCurrentTranscript(transcript);
-    processUserInput(transcript.trim());
-  }
-
   // Generate time-based greeting
   const generateWelcomeGreeting = () => {
     const now = new Date();
@@ -284,7 +260,6 @@ messages/channels, and managing Google Calendar events.`,
 
       // Add user message to conversation
       setMessages((prev) => [...prev, userMessage]);
-      setCurrentTranscript("");
       setIsProcessing(true);
 
       // Process with AI Assistant - using a standard user message approach
@@ -402,7 +377,6 @@ messages/channels, and managing Google Calendar events.`,
       };
 
       setMessages((prev) => [...prev, userMessage]);
-      setCurrentTranscript("");
 
       try {
         // Detect intent for visual indicator
@@ -528,7 +502,6 @@ messages/channels, and managing Google Calendar events.`,
         };
 
         setMessages((prev) => [...prev, aiMessage]);
-
         // Speak the response
         if (!isMuted && response) {
           await aiAssistant.speakMessage(response);
@@ -642,33 +615,7 @@ messages/channels, and managing Google Calendar events.`,
     }
   }, [speechRecognition, aiAssistant, isVoiceEnabled]);
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-    if (!isMuted) {
-      aiAssistant.stopSpeaking();
-    }
-  };
-
-  const toggleVoiceEnabled = () => {
-    setIsVoiceEnabled(!isVoiceEnabled);
-    if (isVoiceEnabled) {
-      aiAssistant.stopSpeaking();
-      speechRecognition.stopListening();
-    }
-  };
-
-  const getStatusColor = () => {
-    switch (speechRecognition.status) {
-      case RecognitionStatus.LISTENING:
-        return "text-green-500";
-      case RecognitionStatus.PROCESSING:
-        return "text-blue-500";
-      case RecognitionStatus.ERROR:
-        return "text-red-500";
-      default:
-        return "text-gray-500";
-    }
-  };
+  /* --- Muting & voice-enable toggles removed because they were unused --- */
 
   // Create a function to manually trigger welcome greeting
   const triggerWelcomeGreeting = React.useCallback(async () => {

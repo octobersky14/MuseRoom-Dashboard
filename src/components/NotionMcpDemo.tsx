@@ -3,8 +3,6 @@ import { useNotionMcp } from "@/hooks/useNotionMcp";
 import {
   ConnectionStatus,
   AuthStatus,
-  McpPageResponse,
-  McpDatabaseResponse,
 } from "@/services/notionMcpService";
 import {
   Card,
@@ -28,7 +26,6 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
-  Lock,
   Unlock,
   Plus,
   Eye,
@@ -45,12 +42,20 @@ const NotionMcpDemo: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedItemType, setSelectedItemType] = useState<
-    "page" | "database" | null
+    "page" | "block" | null
   >(null);
   const [activeTab, setActiveTab] = useState<string>("search");
   const [newPageTitle, setNewPageTitle] = useState<string>("");
   const [newCommentContent, setNewCommentContent] = useState<string>("");
   const [offlineReason, setOfflineReason] = useState<string>("");
+
+  // new local data caches to avoid rendering Promises
+  const [searchResults, setSearchResults] = useState<
+    Array<{ id: string; title: string; type: "page" | "database" }>
+  >([]);
+  const [viewItem, setViewItem] = useState<any | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
 
   // Use the Notion MCP hook
   const notion = useNotionMcp({
@@ -61,12 +66,68 @@ const NotionMcpDemo: React.FC = () => {
 
   const { toast } = useToast();
 
+  /* --------------------------------------------------------------------- */
+  /* Side-effects : load comments & users                                  */
+  /* --------------------------------------------------------------------- */
+
+  // Load comments whenever the user opens the "comments" tab for an item
+  useEffect(() => {
+    if (activeTab !== "comments" || !selectedItemId) return;
+
+    const fetchComments = async () => {
+      try {
+        const res = await notion.getComments(selectedItemId);
+        setComments(res.results);
+      } catch (err) {
+        console.error("Failed to fetch comments:", err);
+      }
+    };
+
+    fetchComments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedItemId]);
+
+  // Load users whenever the user switches to the "users" tab
+  useEffect(() => {
+    if (activeTab !== "users") return;
+
+    const fetchUsers = async () => {
+      try {
+        const res = await notion.getUsers();
+        setUsers(res.results);
+      } catch (err) {
+        console.error("Failed to fetch users:", err);
+      }
+    };
+
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   // Handle search
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
 
     try {
-      await notion.search(searchQuery);
+      const results = await notion.search(searchQuery);
+      // Normalise the results to the local, simplified shape expected by
+      // `searchResults` – this keeps strict typing without widening the
+      // component state.
+      const normalised = results.results.map((item: any) => {
+        // `item` can be a page or a database.  Fall back gracefully if
+        // expected properties are missing.
+        const isPage = item.object === "page" || item.type === "page";
+        return {
+          id: item.id,
+          title:
+            item.title?.plain_text ??
+            item.title?.[0]?.plain_text ??
+            item.name ??
+            "Untitled",
+          type: isPage ? ("page" as const) : ("database" as const),
+        };
+      });
+      setSearchResults(normalised);
       setActiveTab("search-results");
     } catch (error) {
       toast({
@@ -81,10 +142,12 @@ const NotionMcpDemo: React.FC = () => {
   // Handle view item
   const handleViewItem = async (id: string, type: "page" | "database") => {
     setSelectedItemId(id);
-    setSelectedItemType(type);
+    // 'database' is not allowed by the state type, treat it as 'block'
+    setSelectedItemType(type === "page" ? "page" : "block");
 
     try {
-      await notion.view(type, id);
+      const item = await notion.view(type === "page" ? "page" : "database", id);
+      setViewItem(item);
       setActiveTab("view");
     } catch (error) {
       toast({
@@ -162,7 +225,7 @@ const NotionMcpDemo: React.FC = () => {
     toast({
       title: "Offline Mode Enabled",
       description: offlineReason || "Manually enabled by user",
-      variant: "warning",
+      variant: "default",
     });
   };
 
@@ -257,7 +320,7 @@ const NotionMcpDemo: React.FC = () => {
           <WifiOff className="h-4 w-4" />
           <AlertTitle>Offline Mode Active</AlertTitle>
           <AlertDescription>
-            {notion.offlineErrorMessage ||
+            {notion.getOfflineErrorMessage() ||
               "Operating in offline mode with mock responses"}
           </AlertDescription>
         </Alert>
@@ -420,107 +483,92 @@ const NotionMcpDemo: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2">
-                {notion
-                  .search(searchQuery)
-                  .then((results) =>
-                    results.results.length > 0 ? (
-                      results.results.map((item) => (
-                        <Card
-                          key={item.id}
-                          className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => handleViewItem(item.id, item.type)}
-                        >
-                          <CardContent className="p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              {item.type === "page" ? (
-                                <File className="h-4 w-4 text-blue-500" />
-                              ) : (
-                                <Database className="h-4 w-4 text-green-500" />
-                              )}
-                              <span>{item.title}</span>
-                            </div>
-                            <Badge>{item.type}</Badge>
-                          </CardContent>
-                        </Card>
-                      ))
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        No results found
-                      </div>
-                    )
-                  )
-                  .catch(() => (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>Error</AlertTitle>
-                      <AlertDescription>
-                        Failed to load search results
-                      </AlertDescription>
-                    </Alert>
-                  ))}
+                {searchResults.length > 0 ? (
+                  searchResults.map((item) => (
+                    <Card
+                      key={item.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleViewItem(item.id, item.type)}
+                    >
+                      <CardContent className="p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {item.type === "page" ? (
+                            <File className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <Database className="h-4 w-4 text-green-500" />
+                          )}
+                          <span>{item.title}</span>
+                        </div>
+                        <Badge>{item.type}</Badge>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    No results found
+                  </div>
+                )}
               </div>
             )}
           </TabsContent>
 
           <TabsContent value="view">
-            {selectedItemId &&
-              selectedItemType &&
-              (notion.isLoading ? (
+            {selectedItemId && selectedItemType ? (
+              notion.isLoading ? (
+                /* Loading skeleton */
                 <div className="space-y-4">
                   <Skeleton className="h-8 w-1/2" />
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-3/4" />
                 </div>
-              ) : (
-                notion
-                  .view(selectedItemType, selectedItemId)
-                  .then((item) => (
-                    <div className="space-y-4">
-                      <h3 className="text-xl font-bold">{item.title}</h3>
+              ) : viewItem ? (
+                /* Loaded page / block */
+                <div className="space-y-4">
+                  <h3 className="text-xl font-bold">{viewItem.title}</h3>
 
-                      {selectedItemType === "page" && item.content && (
-                        <div className="prose max-w-none">
-                          <div
-                            dangerouslySetInnerHTML={{ __html: item.content }}
-                          />
-                        </div>
-                      )}
+                  {selectedItemType === "page" && viewItem.content && (
+                    <div className="prose max-w-none">
+                      <div
+                        dangerouslySetInnerHTML={{ __html: viewItem.content }}
+                      />
+                    </div>
+                  )}
 
-                      {selectedItemType === "database" && (
-                        <div className="border rounded-md p-4">
-                          <h4 className="font-semibold mb-2">
-                            Database Properties
-                          </h4>
-                          <div className="grid grid-cols-2 gap-2">
-                            {Object.entries(item.properties || {}).map(
-                              ([key, value]) => (
-                                <div key={key} className="flex justify-between">
-                                  <span className="font-medium">{key}:</span>
-                                  <span>{value.type}</span>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="text-sm text-gray-500">
-                        Last edited:{" "}
-                        {new Date(item.last_edited_time).toLocaleString()}
+                  {selectedItemType === "block" && viewItem.properties && (
+                    <div className="border rounded-md p-4">
+                      <h4 className="font-semibold mb-2">
+                        Database Properties
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(viewItem.properties).map(
+                          ([key, value]) => (
+                            <div
+                              key={key}
+                              className="flex justify-between text-sm"
+                            >
+                              <span className="font-medium">{key}:</span>
+                              <span>{(value as any).type}</span>
+                            </div>
+                          )
+                        )}
                       </div>
                     </div>
-                  ))
-                  .catch(() => (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>Error</AlertTitle>
-                      <AlertDescription>Failed to load item</AlertDescription>
-                    </Alert>
-                  ))
-              ))}
+                  )}
 
-            {!selectedItemId && (
+                  <div className="text-sm text-gray-500">
+                    Last edited:{" "}
+                    {new Date(viewItem.last_edited_time).toLocaleString()}
+                  </div>
+                </div>
+              ) : (
+                /* Fallback if viewItem unexpectedly null */
+                <div className="text-center py-8 text-gray-500">
+                  Unable to load item
+                </div>
+              )
+            ) : (
+              /* Nothing selected yet */
               <div className="text-center py-8 text-gray-500">
                 Select an item to view
               </div>
@@ -580,12 +628,8 @@ const NotionMcpDemo: React.FC = () => {
                       <Skeleton className="h-20 w-full" />
                       <Skeleton className="h-20 w-full" />
                     </div>
-                  ) : (
-                    notion
-                      .getComments(selectedItemId)
-                      .then((comments) =>
-                        comments.results.length > 0 ? (
-                          comments.results.map((comment) => (
+                  ) : comments.length > 0 ? (
+                    comments.map((comment) => (
                             <Card key={comment.id} className="mb-2">
                               <CardContent className="p-4">
                                 <div className="flex items-center gap-2 mb-2">
@@ -600,28 +644,22 @@ const NotionMcpDemo: React.FC = () => {
                                   </span>
                                 </div>
                                 <div>
-                                  {comment.rich_text.map((text, index) => (
+                                  {comment.rich_text.map(
+                                    (
+                                      text: { plain_text: string },
+                                      index: number
+                                    ) => (
                                     <span key={index}>{text.plain_text}</span>
-                                  ))}
+                                    )
+                                  )}
                                 </div>
                               </CardContent>
                             </Card>
                           ))
-                        ) : (
-                          <div className="text-center py-4 text-gray-500">
-                            No comments yet
-                          </div>
-                        )
-                      )
-                      .catch(() => (
-                        <Alert variant="destructive">
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Error</AlertTitle>
-                          <AlertDescription>
-                            Failed to load comments
-                          </AlertDescription>
-                        </Alert>
-                      ))
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      No comments yet
+                    </div>
                   )}
                 </div>
               </>
@@ -641,13 +679,9 @@ const NotionMcpDemo: React.FC = () => {
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
               </div>
-            ) : (
-              notion
-                .getUsers()
-                .then((users) =>
-                  users.results.length > 0 ? (
-                    <div className="space-y-2">
-                      {users.results.map((user) => (
+            ) : users.length > 0 ? (
+              <div className="space-y-2">
+                      {users.map((user) => (
                         <Card key={user.id}>
                           <CardContent className="p-4 flex items-center gap-3">
                             {user.avatar_url ? (
@@ -675,20 +709,11 @@ const NotionMcpDemo: React.FC = () => {
                           </CardContent>
                         </Card>
                       ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 text-gray-500">
-                      No users found
-                    </div>
-                  )
-                )
-                .catch(() => (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load users</AlertDescription>
-                  </Alert>
-                ))
+              </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                No users found
+              </div>
             )}
           </TabsContent>
         </Tabs>
@@ -726,5 +751,15 @@ const NotionMcpDemo: React.FC = () => {
     </Card>
   );
 };
+
+
+/* ------------------------------------------------------------------------- */
+/* Side-effects for comments & users                                         */
+/* ------------------------------------------------------------------------- */
+
+// Fetch comments whenever the selected item or tab changes to "comments"
+// and store them locally so we don't render Promises.
+// This code must come after component definition to avoid React Hook rules
+// issues, hence is declared outside and then used inside the component.
 
 export default NotionMcpDemo;

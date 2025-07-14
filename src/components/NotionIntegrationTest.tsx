@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Separator } from './ui/separator';
 import { Badge } from './ui/badge';
 import { Loader2, CheckCircle, AlertCircle, Database, FileText, Search, RefreshCw } from 'lucide-react';
 import NotionService, { NotionPage, NotionDatabase } from '@/services/notionService';

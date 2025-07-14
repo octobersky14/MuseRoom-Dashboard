@@ -1,73 +1,170 @@
-import { McpConnection } from "@/services/mcpClientService";
+// MCP Configuration Loader
+// Utility functions for loading and managing MCP server configurations
+
+export interface McpConfig {
+  servers: McpServerConfig[];
+  defaultServer?: string;
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  type: "stdio" | "sse" | "http";
+  url?: string;
+  command?: string;
+  args?: string[];
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface McpConnection {
+  type: "stdio" | "sse" | "http";
+  url?: string;
+  command?: string;
+  args?: string[];
+  headers?: Record<string, string>;
+}
+
+// Default MCP configuration
+const defaultConfig: McpConfig = {
+  servers: [
+    {
+      id: "notion-mcp",
+      name: "Notion MCP Server",
+      type: "sse",
+      url: "https://mcp.notion.com/sse",
+      enabled: true,
+    },
+    {
+      id: "filesystem-mcp",
+      name: "Filesystem MCP Server",
+      type: "stdio",
+      command: "npx",
+      args: ["@modelcontextprotocol/server-filesystem", "--directory", "."],
+      enabled: false,
+    },
+  ],
+  defaultServer: "notion-mcp",
+};
 
 /**
- * Load MCP configuration from mcp-config.json file
- * and convert it to the format expected by the MCP client
+ * Load MCP configuration from localStorage or return default
  */
-export async function loadMcpConfig(): Promise<McpConnection[]> {
+export function loadMcpConfig(): McpConfig {
   try {
-    // Try to fetch the config file
-    const response = await fetch("/mcp-config.json");
-    if (!response.ok) {
-      console.warn("MCP config file not found at /mcp-config.json");
-      return [];
+    const stored = localStorage.getItem("mcp-config");
+    if (stored) {
+      const config = JSON.parse(stored);
+      return { ...defaultConfig, ...config };
     }
-
-    const config = await response.json();
-    const connections: McpConnection[] = [];
-
-    // Convert config to MCP connections
-    for (const [name, serverConfig] of Object.entries(config)) {
-      if (typeof serverConfig === "object" && serverConfig !== null) {
-        const config = serverConfig as any;
-
-        if (config.type === "sse" && config.url) {
-          // SSE-based MCP server
-          connections.push({
-            name,
-            type: "sse",
-            url: config.url,
-            headers: config.headers || {},
-          });
-        } else if (config.type === "http" && config.url) {
-          // HTTP-based MCP server
-          connections.push({
-            name,
-            type: "http",
-            url: config.url,
-            headers: config.headers || {},
-          });
-        } else if (config.command && config.args) {
-          // Legacy stdio-based MCP server (not supported in browser)
-          console.warn(
-            `Stdio connection for ${name} is not supported in browser environment`
-          );
-        }
-      }
-    }
-
-    console.log(`Loaded ${connections.length} MCP connections from config`);
-    return connections;
   } catch (error) {
-    console.error("Failed to load MCP config:", error);
-    return [];
+    console.error("Error loading MCP config:", error);
+  }
+  return defaultConfig;
+}
+
+/**
+ * Save MCP configuration to localStorage
+ */
+export function saveMcpConfig(config: McpConfig): void {
+  try {
+    localStorage.setItem("mcp-config", JSON.stringify(config));
+  } catch (error) {
+    console.error("Error saving MCP config:", error);
   }
 }
 
 /**
- * Get a specific MCP connection by name
+ * Get MCP connection configuration by server ID
  */
-export async function getMcpConnection(
-  name: string
-): Promise<McpConnection | null> {
-  const connections = await loadMcpConfig();
-  return connections.find((conn) => conn.name === name) || null;
+export function getMcpConnection(serverId: string): McpConnection | null {
+  const config = loadMcpConfig();
+  const server = config.servers.find((s) => s.id === serverId);
+
+  if (!server || !server.enabled) {
+    return null;
+  }
+
+  return {
+    type: server.type,
+    url: server.url,
+    command: server.command,
+    args: server.args,
+    headers: server.headers,
+  };
 }
 
 /**
- * Check if a specific MCP server is configured
+ * Get default MCP connection
  */
-export async function hasMcpServer(name: string): Promise<boolean> {
-  const connection = await getMcpConnection(name);
-  return connection !== null;
+export function getDefaultMcpConnection(): McpConnection | null {
+  const config = loadMcpConfig();
+  if (config.defaultServer) {
+    return getMcpConnection(config.defaultServer);
+  }
+  return null;
+}
+
+/**
+ * Get all enabled MCP servers
+ */
+export function getEnabledMcpServers(): McpServerConfig[] {
+  const config = loadMcpConfig();
+  return config.servers.filter((server) => server.enabled);
+}
+
+/**
+ * Add a new MCP server configuration
+ */
+export function addMcpServer(server: McpServerConfig): void {
+  const config = loadMcpConfig();
+  config.servers.push(server);
+  saveMcpConfig(config);
+}
+
+/**
+ * Update an existing MCP server configuration
+ */
+export function updateMcpServer(
+  serverId: string,
+  updates: Partial<McpServerConfig>
+): void {
+  const config = loadMcpConfig();
+  const serverIndex = config.servers.findIndex((s) => s.id === serverId);
+
+  if (serverIndex !== -1) {
+    config.servers[serverIndex] = {
+      ...config.servers[serverIndex],
+      ...updates,
+    };
+    saveMcpConfig(config);
+  }
+}
+
+/**
+ * Remove an MCP server configuration
+ */
+export function removeMcpServer(serverId: string): void {
+  const config = loadMcpConfig();
+  config.servers = config.servers.filter((s) => s.id !== serverId);
+
+  // If the removed server was the default, clear the default
+  if (config.defaultServer === serverId) {
+    config.defaultServer = undefined;
+  }
+
+  saveMcpConfig(config);
+}
+
+/**
+ * Set the default MCP server
+ */
+export function setDefaultMcpServer(serverId: string): void {
+  const config = loadMcpConfig();
+  const server = config.servers.find((s) => s.id === serverId);
+
+  if (server) {
+    config.defaultServer = serverId;
+    saveMcpConfig(config);
+  }
 }

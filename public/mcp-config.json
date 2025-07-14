@@ -1,6 +1,6 @@
 {
   "notionMCP": {
-    "type": "sse",
-    "url": "https://mcp.notion.com/sse"
+    "command": "npx",
+    "args": ["-y", "mcp-remote", "https://mcp.notion.com/sse"]
   }
 }

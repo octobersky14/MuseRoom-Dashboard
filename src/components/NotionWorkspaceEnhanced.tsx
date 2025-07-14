@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import {
   ExternalLink,
-  Settings,
   Maximize2,
   Minimize2,
   RefreshCw,
@@ -13,25 +12,17 @@ import {
   Plus,
   Search,
   AlertCircle,
-  Link,
   Eye,
   FileText,
-  Calendar,
   CheckSquare,
-  Users,
-  Globe,
-  Zap,
   Database,
   Loader2,
   CheckCircle,
   XCircle,
-  Edit3,
-  Trash2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "./ui/use-toast";
 import { useNotionAPI } from "@/hooks/useNotionAPI";
-import { NotionTask } from "@/types";
 import { NotionPage, NotionDatabase } from "@/services/notionService";
 
 interface NotionWorkspaceEnhancedProps {
@@ -42,7 +33,6 @@ export function NotionWorkspaceEnhanced({
   className = "",
 }: NotionWorkspaceEnhancedProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [showCreatePage, setShowCreatePage] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,16 +55,11 @@ export function NotionWorkspaceEnhanced({
     databases,
     tasks,
     testConnection,
-    loadPages,
-    loadDatabases,
     loadAll,
     search,
-    getPageContent,
     getTasks,
     createPage,
     createTask,
-    updatePage,
-    deletePage,
     clearError,
     createTextBlock,
     createHeadingBlock,
@@ -369,11 +354,7 @@ export function NotionWorkspaceEnhanced({
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4" />
                         <span className="font-medium">
-                          {"title" in result
-                            ? result.title
-                            : "parent" in result
-                            ? result.title
-                            : "Untitled"}
+                          {result.title || "Untitled"}
                         </span>
                         <Badge variant="outline">
                           {"parent" in result ? "Page" : "Database"}

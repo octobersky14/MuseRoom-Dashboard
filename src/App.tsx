@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/toaster";
 import { WifiOff } from "lucide-react";
@@ -10,9 +10,8 @@ import GeminiService from "@/services/geminiService";
 import Dashboard from "./pages/Dashboard";
 import NotionWorkspace from "./pages/NotionWorkspace";
 import Settings from "./pages/Settings"; // NEW
-
-// Import layout components
 import { Sidebar } from "./components/layout/Sidebar";
+import DiscordMessages from "./components/DiscordMessages";
 
 function App() {
   // Keep only necessary state
@@ -30,7 +29,7 @@ function App() {
         if (!valid) {
           setIsOfflineMode(true);
           setApiErrorMessage(
-            gemini.apiKeyErrorMessage ||
+            GeminiService.apiKeyErrorMessageStatic ||
               "The Gemini API is unavailable. Running in offline mode."
           );
         }
@@ -42,62 +41,79 @@ function App() {
         );
       }
     };
+
     verifyApiKey();
   }, []);
 
-  // Ensure dark mode is always enabled
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-    return () => {
-      document.documentElement.classList.remove("dark");
-    };
-  }, []);
-
-  // Callback when sidebar width changes
-  const handleSidebarWidth = (width: number) => {
+  // Handle sidebar width changes
+  const handleSidebarWidthChange = (width: number) => {
     setSidebarWidth(width);
   };
 
   return (
-    <AuthWrapper>
-      <BrowserRouter>
-        <div className="min-h-screen bg-gradient-to-br from-background via-background to-gray-900/30 relative">
-          {/* Offline-mode Banner */}
+    <BrowserRouter>
+      <div className="flex min-h-screen">
+        {/* Fixed-width sidebar */}
+        <Sidebar onWidthChange={handleSidebarWidthChange} />
+
+        {/* Main content area that shifts based on sidebar width */}
+        <div
+          className="flex-1 flex flex-col transition-all duration-300"
+          style={{ marginLeft: `${sidebarWidth}px` }}
+        >
+          {/* Offline mode notification */}
           {isOfflineMode && (
-            <div className="fixed top-0 left-0 right-0 z-50 bg-amber-700/90 backdrop-blur-sm border-b border-amber-500/40 text-sm text-amber-100 flex items-center px-4 py-2">
+            <div className="bg-amber-600/20 text-amber-300 px-4 py-2 flex items-center text-sm font-medium sticky top-0 z-30">
               <WifiOff className="h-4 w-4 mr-2 shrink-0" />
               <span className="flex-1">
                 {apiErrorMessage ||
+                  GeminiService.apiKeyErrorMessageStatic ||
                   "Operating in offline mode – some AI features may be limited."}
               </span>
             </div>
           )}
 
-          {/* Simplified background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/5 via-transparent to-pink-900/5 pointer-events-none" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(139,92,246,0.05),transparent_70%)] pointer-events-none" />
-
-          {/* Sidebar */}
-          <Sidebar onWidthChange={handleSidebarWidth} />
-
-          {/* Main Content Area */}
-          <main
-            className={`relative z-10 ${isOfflineMode ? "pt-10" : ""}`}
-            style={{ marginLeft: `${sidebarWidth}px`, transition: "margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}
-          >
+          <main className="flex-1">
             <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/notion" element={<NotionWorkspace />} />
-              <Route path="/assistant" element={<Dashboard />} />
-              {/* Settings page route */}
-              <Route path="/settings" element={<Settings />} />
+              <Route
+                path="/"
+                element={
+                  <AuthWrapper>
+                    <Dashboard />
+                  </AuthWrapper>
+                }
+              />
+              <Route
+                path="/notion"
+                element={
+                  <AuthWrapper>
+                    <NotionWorkspace />
+                  </AuthWrapper>
+                }
+              />
+              <Route
+                path="/discord"
+                element={
+                  <AuthWrapper>
+                    <DiscordMessages />
+                  </AuthWrapper>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <AuthWrapper>
+                    <Settings />
+                  </AuthWrapper>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         </div>
-        <Toaster />
-      </BrowserRouter>
-    </AuthWrapper>
+      </div>
+      <Toaster />
+    </BrowserRouter>
   );
 }
 

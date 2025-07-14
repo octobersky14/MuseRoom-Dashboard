@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { McpStatusIndicator } from "@/components/McpStatusIndicator";
 import { useAIAssistant } from "@/hooks/useAIAssistant";
 
@@ -30,15 +29,15 @@ const Dashboard: React.FC = () => {
   const { mcpStatus, mcpTools } = useAIAssistant();
 
   // State
-  const [selectedVoice, setSelectedVoice] = useState("JBFqnCBsd6RMkjVDRZzb"); // Default ElevenLabs voice (George)
-  const [useElevenLabs, setUseElevenLabs] = useState(true);
-  const [availableVoices, setAvailableVoices] = useState([]);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [selectedVoice, _setSelectedVoice] = useState(
+    "JBFqnCBsd6RMkjVDRZzb"
+  ); // Default ElevenLabs voice (George)
+  const [useElevenLabs, _setUseElevenLabs] = useState(true);
   const [showChat, setShowChat] = useState(false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
-  const [isOfflineMode, setIsOfflineMode] = useState(false);
-  const [apiErrorMessage, setApiErrorMessage] = useState("");
-  const [recentActivities, setRecentActivities] = useState([
+  // Setter kept for future updates; may be unused for now
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [recentActivities, _setRecentActivities] = useState([
     {
       id: 1,
       title: "Updated AI Team project",
@@ -65,7 +64,8 @@ const Dashboard: React.FC = () => {
     },
   ]);
 
-  const { toast } = useToast();
+  // currently not used in this component; keep underscored to avoid TS warning
+  const { toast: _toast } = useToast();
   const elevenLabsApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
 
   // Handler for ai-prompt submission
@@ -259,12 +259,10 @@ const Dashboard: React.FC = () => {
                 <VoiceAgent
                   selectedVoice={selectedVoice}
                   useElevenLabs={useElevenLabs}
-                  availableVoices={availableVoices}
                   elevenLabsApiKey={elevenLabsApiKey}
                   initialPrompt={initialPrompt}
                   onPromptHandled={() => setInitialPrompt(null)}
                   showChat={true}
-                  setShowChat={setShowChat}
                 />
               </Card>
             )}

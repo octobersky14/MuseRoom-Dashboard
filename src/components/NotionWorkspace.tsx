@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -11,13 +11,10 @@ import {
   BookOpen,
   Plus,
   Search,
-  AlertCircle,
-  Link,
   Eye,
   FileText,
   Calendar,
   CheckSquare,
-  Users,
   Globe,
   Zap,
   Database,
@@ -236,7 +233,7 @@ export function NotionWorkspace({
 
               {/* Quick Actions */}
               <div className="flex items-center gap-1 mr-2">
-                {quickActions.map((action, index) => (
+                {quickActions.map((action) => (
                   <motion.button
                     key={action.label}
                     onClick={action.action}
