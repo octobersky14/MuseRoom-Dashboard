@@ -165,7 +165,6 @@ messages/channels, and managing Google Calendar events.`
         } else {
           geminiServiceRef.current.setSystemInstruction(baseInstruction);
         }
-        }
 
         /* NOTE:
          * We no longer perform an *immediate* API-key validation here.
