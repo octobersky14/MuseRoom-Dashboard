@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import { Volume2, VolumeX, Settings, Loader2, WifiOff, AlertTriangle } from "lucide-react";
+import { Volume2, VolumeX, Settings, Loader2, WifiOff, AlertTriangle, LayoutDashboard } from "lucide-react";
 import { useToast } from "./ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
@@ -17,7 +17,7 @@ interface Message {
   isUser: boolean;
   intent?: string;
   intentConfidence?: number;
-  source?: 'gemini' | 'notion' | 'discord' | 'calendar';
+  source?: 'gemini' | 'notion' | 'discord' | 'calendar' | 'system';
 }
 
 interface ElevenLabsVoice {
@@ -58,6 +58,8 @@ export function VoiceAgent({
   >(null);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState("");
+  const [workspaceOverviewShown, setWorkspaceOverviewShown] = useState(false);
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   // Removed standalone GeminiService ref – useAIAssistant handles this centrally
 
   // Helper to generate a collision-resistant ID for React keys
@@ -135,8 +137,11 @@ messages/channels, and managing Google Calendar events.`,
     }
   });
 
-  // Check if Gemini service is in offline/mock mode
-  // (Removed legacy GeminiService validation useEffect – centralized in useAIAssistant)
+  // Sync offline mode state with assistant hook
+  useEffect(() => {
+    setIsOfflineMode(aiAssistant.isOfflineMode);
+    setApiErrorMessage(aiAssistant.apiErrorMessage);
+  }, [aiAssistant.isOfflineMode, aiAssistant.apiErrorMessage]);
 
   // Handle user speech transcript
   function handleUserTranscript(transcript: string) {
@@ -188,6 +193,51 @@ messages/channels, and managing Google Calendar events.`,
     return greeting;
   };
 
+  // Function to get workspace overview
+  const getWorkspaceOverview = useCallback(async () => {
+    if (workspaceOverviewShown) return; // Don't fetch again if already shown
+    
+    setIsLoadingWorkspace(true);
+    try {
+      // Send a special message to trigger workspace overview
+      const response = await aiAssistant.sendMessage("workspace overview");
+      
+      // Create a system message with the workspace overview
+      const overviewMessage: Message = {
+        id: generateMessageId(),
+        text: response,
+        timestamp: new Date(),
+        isUser: false,
+        source: "system",
+      };
+      
+      // Add the overview message to the conversation
+      setMessages(prev => {
+        // If it's the first message, just set it
+        if (prev.length === 0) return [overviewMessage];
+        // Otherwise, add it as the second message (after welcome)
+        return [prev[0], overviewMessage, ...prev.slice(1)];
+      });
+      
+      // Mark workspace overview as shown
+      setWorkspaceOverviewShown(true);
+      
+      // Speak the overview if not muted
+      if (!isMuted && useElevenLabs) {
+        await aiAssistant.speakMessage(response);
+      }
+    } catch (error) {
+      console.error("Error fetching workspace overview:", error);
+      toast({
+        title: "Workspace Overview Error",
+        description: "Could not fetch workspace overview. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingWorkspace(false);
+    }
+  }, [workspaceOverviewShown, aiAssistant, generateMessageId, isMuted, useElevenLabs, toast]);
+
   // Only run this effect on mount and when initialPrompt changes
   useEffect(() => {
     if (initialPrompt) {
@@ -218,7 +268,7 @@ messages/channels, and managing Google Calendar events.`,
         text: welcomeText,
         timestamp: new Date(),
         isUser: false,
-        source: "gemini" // Mark as coming from assistant without API call
+        source: "system" // Mark as coming from system without API call
       };
       
       // Just set the welcome message directly without AI processing
@@ -227,7 +277,7 @@ messages/channels, and managing Google Calendar events.`,
       // Speak the welcome message after a short delay using direct speech synthesis
       // to avoid triggering Gemini API calls for the welcome message
       const speakWelcome = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // 1 second delay
         if (!isMuted) {
           try {
             // Use direct speech synthesis without going through AI pipeline
@@ -275,6 +325,11 @@ messages/channels, and managing Google Calendar events.`,
             window.speechSynthesis.speak(utterance);
           }
         }
+        
+        // After welcome message, fetch workspace overview
+        setTimeout(() => {
+          getWorkspaceOverview();
+        }, 2000); // Wait 2 seconds after welcome message before showing workspace overview
       };
       speakWelcome();
     }
@@ -664,6 +719,24 @@ messages/channels, and managing Google Calendar events.`,
             </div>
           )}
           
+          {/* Workspace Overview Button */}
+          <div className="flex justify-end px-4 pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs flex items-center gap-1 bg-purple-900/30 hover:bg-purple-800/40 border-purple-700/30"
+              onClick={getWorkspaceOverview}
+              disabled={isLoadingWorkspace}
+            >
+              {isLoadingWorkspace ? (
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              ) : (
+                <LayoutDashboard className="h-3 w-3 mr-1" />
+              )}
+              {workspaceOverviewShown ? "Refresh Workspace" : "Show Workspace Overview"}
+            </Button>
+          </div>
+          
           {/* Status Header */}
           {(speechRecognition.isListening || isProcessing) && (
             <div className="mb-6 flex items-center justify-center">
@@ -739,6 +812,8 @@ messages/channels, and managing Google Calendar events.`,
                         ? "bg-gradient-to-br from-blue-600 to-purple-700 text-white border border-blue-400/50"
                         : message.source === "notion"
                         ? "bg-gradient-to-br from-blue-700/95 to-blue-900/95 text-gray-100 border border-blue-500/50"
+                        : message.source === "system"
+                        ? "bg-gradient-to-br from-indigo-700/95 to-indigo-900/95 text-gray-100 border border-indigo-500/50"
                         : "bg-gradient-to-br from-gray-700/95 to-gray-800/95 text-gray-100 border border-gray-600/50"
                     }`}
                   >
@@ -751,6 +826,8 @@ messages/channels, and managing Google Calendar events.`,
                             ? "bg-green-400"
                             : message.source === "calendar"
                             ? "bg-yellow-400"
+                            : message.source === "system"
+                            ? "bg-indigo-400"
                             : "bg-purple-400"
                         } rounded-full`}></div>
                         <span className={`text-xs font-medium ${
@@ -760,6 +837,8 @@ messages/channels, and managing Google Calendar events.`,
                             ? "text-green-400"
                             : message.source === "calendar"
                             ? "text-yellow-400"
+                            : message.source === "system"
+                            ? "text-indigo-400"
                             : "text-purple-400"
                         }`}>
                           {message.source === "notion" 
@@ -768,6 +847,8 @@ messages/channels, and managing Google Calendar events.`,
                             ? "Discord Assistant"
                             : message.source === "calendar"
                             ? "Calendar Assistant"
+                            : message.source === "system"
+                            ? "System Message"
                             : "Assistant"}
                           {isOfflineMode && message.timestamp > new Date(Date.now() - 60000) && (
                             <span className="ml-2 text-amber-300 text-xs">(Offline)</span>
@@ -815,6 +896,24 @@ messages/channels, and managing Google Calendar events.`,
                     <span className="text-xs text-purple-400">
                       Assistant is thinking...
                       {isOfflineMode && <span className="ml-2 text-amber-300">(Offline Mode)</span>}
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            
+            {/* Workspace Loading Indicator */}
+            {isLoadingWorkspace && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-center"
+              >
+                <div className="bg-gradient-to-br from-indigo-700/40 to-indigo-900/40 border border-indigo-600/30 rounded-2xl px-5 py-3 backdrop-blur-sm">
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                    <span className="text-xs text-indigo-300">
+                      Analyzing workspace structure...
                     </span>
                   </div>
                 </div>
