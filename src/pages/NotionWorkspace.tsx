@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { NotionWorkspaceEnhanced } from "@/components/NotionWorkspaceEnhanced";
 import NotionIntegrationTest from "@/components/NotionIntegrationTest";
@@ -9,11 +9,17 @@ import { Button } from "@/components/ui/button";
 import { FileText, Database, Code, RefreshCw, Search, Settings, Info } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { SplashCursor } from "@/components/ui/splash-cursor";
 
 const NotionWorkspace: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>("workspace");
   const { toast } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Always keep the application in dark mode
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
 
   // Handle refresh action
   const handleRefresh = async () => {
@@ -33,6 +39,20 @@ const NotionWorkspace: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
+      {/* Fluid splash-cursor background */}
+      <div className="fixed inset-0 z-0 opacity-40">
+        <SplashCursor
+          TRANSPARENT={true}
+          BACK_COLOR={{ r: 0.01, g: 0.01, b: 0.03 }}
+          SPLAT_RADIUS={0.15}
+          SPLAT_FORCE={3500}
+          CURL={12}
+          DENSITY_DISSIPATION={0.9}
+          VELOCITY_DISSIPATION={0.6}
+          COLOR_UPDATE_SPEED={8}
+          SHADING={true}
+        />
+      </div>
       {/* Background gradient overlays */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 via-transparent to-indigo-900/10 pointer-events-none z-1" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(59,130,246,0.08),transparent_70%)] pointer-events-none z-2" />

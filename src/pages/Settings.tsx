@@ -23,6 +23,7 @@ import {
   FileText,
   Palette,
   Layout,
+  Info,
   Zap
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +36,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SplashCursor } from "@/components/ui/splash-cursor";
 
 // Mock OAuth services - in a real app, these would be actual OAuth implementations
 const mockDiscordOAuth = {
@@ -399,6 +401,21 @@ const Settings: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
+      {/* Fluid splash-cursor background */}
+      <div className="fixed inset-0 z-0 opacity-40">
+        <SplashCursor
+          TRANSPARENT={true}
+          BACK_COLOR={{ r: 0.01, g: 0.01, b: 0.03 }}
+          SPLAT_RADIUS={0.15}
+          SPLAT_FORCE={3500}
+          CURL={12}
+          DENSITY_DISSIPATION={0.9}
+          VELOCITY_DISSIPATION={0.6}
+          COLOR_UPDATE_SPEED={8}
+          SHADING={true}
+        />
+      </div>
+      
       {/* Background gradient overlays */}
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 via-transparent to-pink-900/10 pointer-events-none z-1" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(139,92,246,0.08),transparent_70%)] pointer-events-none z-2" />
@@ -481,7 +498,7 @@ const Settings: React.FC = () => {
                 </TabsList>
 
                 {/* Account Settings Tab */}
-                <TabsContent value="account" className="p-6 space-y-6">
+                <TabsContent value="account" className="p-6 space-y-6 relative z-20">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* User Profile Section */}
                     <Card className="bg-gray-900/60 border border-gray-800/60 backdrop-blur-sm overflow-hidden">
@@ -636,7 +653,7 @@ const Settings: React.FC = () => {
                 </TabsContent>
 
                 {/* Connections Tab */}
-                <TabsContent value="connections" className="p-6 space-y-6">
+                <TabsContent value="connections" className="p-6 space-y-6 relative z-20">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Discord Connection */}
                     <Card className="bg-gray-900/60 border border-gray-800/60 backdrop-blur-sm overflow-hidden relative">
@@ -925,7 +942,7 @@ const Settings: React.FC = () => {
                 </TabsContent>
 
                 {/* Appearance Settings Tab */}
-                <TabsContent value="appearance" className="p-6 space-y-6">
+                <TabsContent value="appearance" className="p-6 space-y-6 relative z-20">
                   <Card className="bg-gray-900/60 border border-gray-800/60 backdrop-blur-sm overflow-hidden">
                     <CardHeader>
                       <CardTitle className="text-lg flex items-center">
@@ -1079,7 +1096,7 @@ const Settings: React.FC = () => {
                 </TabsContent>
 
                 {/* Notifications Tab */}
-                <TabsContent value="notifications" className="p-6 space-y-6">
+                <TabsContent value="notifications" className="p-6 space-y-6 relative z-20">
                   <Card className="bg-gray-900/60 border border-gray-800/60 backdrop-blur-sm overflow-hidden">
                     <CardHeader>
                       <CardTitle className="text-lg flex items-center">

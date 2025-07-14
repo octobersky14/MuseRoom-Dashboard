@@ -58,10 +58,9 @@ export function Sidebar({
   // Enable dark mode
   useEffect(() => {
     document.documentElement.classList.add("dark");
-    return () => {
-      // Only remove if we added it
-      document.documentElement.classList.remove("dark");
-    };
+    // NOTE: do NOT remove the "dark" class on unmount.
+    // This ensures the application stays in dark mode across
+    // route transitions and component remounts.
   }, []);
 
   // Update sidebar width when collapsed or hovered state changes
