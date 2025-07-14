@@ -143,9 +143,8 @@ export const useAIAssistant = (options: UseAIAssistantOptions = {}): UseAIAssist
         
         // Set the system instruction - this will be added to conversation history
         // rather than passed as a parameter in the API call
-        const baseInstruction = systemInstruction || 
+        const baseInstruction = systemInstruction ||
           `You are an AI assistant integrated into the MuseRoom Dashboard.
-            `You are an AI assistant integrated into the MuseRoom Dashboard.
 You ALREADY have fully authenticated access (via secure backend services) to:
 • The user's Notion workspace
 • The user's Discord server/channels
