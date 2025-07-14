@@ -17,7 +17,11 @@ const PORT = process.env.PROXY_PORT || 3005;
  * If you need additional origins just add them to the ALLOWED_ORIGINS
  * env-var (comma-separated).
  */
-const defaultDevOrigins = ['http://localhost:3000', 'http://localhost:3004'];
+const defaultDevOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3002', // Vite dev-server default
+  'http://localhost:3004',
+];
 const allowedOrigins = (
   process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) || []
 ).concat(

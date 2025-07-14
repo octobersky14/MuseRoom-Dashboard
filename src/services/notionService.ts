@@ -62,7 +62,7 @@ export interface UpdatePageRequest {
 
 /**
  * All Notion traffic is routed through a lightweight **local proxy**
- * (see `server.js`) in order to bypass the browser’s CORS restrictions.
+ * (see `server.js`) in order to bypass the browser's CORS restrictions.
  * The proxy lives on http://localhost:3005/api/notion by default.
  *
  * We therefore:
@@ -74,16 +74,41 @@ export interface UpdatePageRequest {
 
 class NotionService {
   private apiKey: string;
-  private baseUrl = "http://localhost:3005/api/notion";
+  /**
+   * Proxy URL is configurable via Vite env so it can be changed without a
+   * code-level edit (e.g. when the proxy runs on a different host / port in CI).
+   * Falls back to the local default if the env-var is not defined.
+   */
+  private baseUrl =
+    (import.meta as any).env?.VITE_NOTION_PROXY_URL ||
+    "http://localhost:3005/api/notion";
   // Version is handled by the proxy – kept for reference only
   private version = "2022-06-28";
+  // Enable verbose logging when running `VITE_DEBUG_NOTION=true vite`
+  private debug =
+    (import.meta as any).env?.VITE_DEBUG_NOTION === "true" ||
+    (import.meta as any).env?.MODE === "development";
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+    if (this.debug) {
+      // eslint-disable-next-line no-console
+      console.debug(
+        `[NotionService] Using proxy URL: ${this.baseUrl} (debug ON)`
+      );
+    }
   }
 
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
     const url = `${this.baseUrl}${endpoint}`;
+
+    if (this.debug) {
+      // eslint-disable-next-line no-console
+      console.debug(
+        `[NotionService] → ${options.method || "GET"} ${url}`,
+        options.body ? JSON.parse(options.body as string) : ""
+      );
+    }
 
     const response = await fetch(url, {
       ...options,
@@ -100,6 +125,11 @@ class NotionService {
       throw new Error(
         `Notion API Error: ${error.message || response.statusText}`
       );
+    }
+
+    if (this.debug) {
+      // eslint-disable-next-line no-console
+      console.debug(`[NotionService] ← ${response.status} ${url}`);
     }
 
     return response.json();
