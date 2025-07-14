@@ -4,8 +4,6 @@ import { useLocation, Link } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
-  Menu,
-  X,
   MessageSquare,
   Calendar,
   Settings,
@@ -48,7 +46,7 @@ interface NavItem {
 export function Sidebar({ 
   className, 
   onWidthChange,
-  defaultCollapsed = false
+  defaultCollapsed = true
 }: SidebarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
@@ -98,11 +96,6 @@ export function Sidebar({
       window.removeEventListener("resize", checkMobile);
     };
   }, []);
-
-  // Toggle sidebar collapse state
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
 
   // Navigation items
   const navItems: NavItem[] = [
@@ -160,20 +153,6 @@ export function Sidebar({
           className="fixed inset-0 bg-black/50 z-30 backdrop-blur-sm"
           onClick={() => setIsCollapsed(true)}
         />
-      )}
-
-      {/* Toggle button for mobile */}
-      {isMobile && (
-        <button
-          onClick={toggleSidebar}
-          className="fixed top-4 left-4 z-50 rounded-md p-2 bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 text-white shadow-lg shadow-purple-500/10"
-        >
-          {isCollapsed ? (
-            <Menu className="h-5 w-5" />
-          ) : (
-            <X className="h-5 w-5" />
-          )}
-        </button>
       )}
 
       {/* Main sidebar */}
@@ -349,25 +328,6 @@ export function Sidebar({
             </div>
           )}
         </div>
-
-        {/* Toggle button for desktop (at bottom of sidebar) */}
-        {!isMobile && (
-          <div className="relative p-4">
-            <button
-              onClick={toggleSidebar}
-              className="w-full flex items-center justify-center p-2 rounded-lg bg-slate-800/30 hover:bg-slate-700/50 text-slate-300 hover:text-white transition-colors border border-slate-700/30"
-            >
-              {isCollapsed ? (
-                <Menu className="h-5 w-5" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <X className="h-4 w-4" />
-                  <span className="text-sm">Collapse</span>
-                </div>
-              )}
-            </button>
-          </div>
-        )}
       </motion.div>
     </SidebarContext.Provider>
   );

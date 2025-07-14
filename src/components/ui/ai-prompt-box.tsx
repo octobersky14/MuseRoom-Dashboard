@@ -37,6 +37,75 @@ const styles = `
   textarea::-webkit-scrollbar-thumb:hover {
     background-color: #555555;
   }
+  
+  /* Glass effect animations */
+  @keyframes pulse-glow {
+    0% { opacity: 0.5; }
+    50% { opacity: 0.8; }
+    100% { opacity: 0.5; }
+  }
+  
+  @keyframes float-gradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  .liquid-glass {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .liquid-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg, 
+      rgba(236, 72, 153, 0.15) 0%, 
+      rgba(139, 92, 246, 0.25) 50%,
+      rgba(236, 72, 153, 0.15) 100%
+    );
+    background-size: 200% 200%;
+    animation: float-gradient 15s ease infinite;
+    pointer-events: none;
+    z-index: -1;
+    border-radius: inherit;
+  }
+  
+  .liquid-glass::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    background: linear-gradient(
+      to bottom right,
+      rgba(236, 72, 153, 0.5) 0%,
+      rgba(139, 92, 246, 0.1) 30%,
+      rgba(139, 92, 246, 0) 50%,
+      rgba(139, 92, 246, 0.1) 70%,
+      rgba(236, 72, 153, 0.5) 100%
+    );
+    border-radius: inherit;
+    z-index: -1;
+    opacity: 0.5;
+    animation: pulse-glow 4s ease-in-out infinite;
+  }
+  
+  .glow-effect {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 
+                0 0 40px rgba(236, 72, 153, 0.1);
+  }
+  
+  .send-button-glow {
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.4), 
+                0 0 20px rgba(236, 72, 153, 0.2);
+    transition: all 0.3s ease;
+  }
+  
+  .send-button-glow:hover {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.6), 
+                0 0 30px rgba(236, 72, 153, 0.3);
+  }
 `;
 
 // Inject styles into document
@@ -352,7 +421,7 @@ const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           <div
             ref={ref}
             className={cn(
-              "rounded-3xl border border-[#444444] bg-[#1F2023] p-2 shadow-[0_8px_30px_rgba(0,0,0,0.24)] transition-all duration-300",
+              "rounded-3xl border border-purple-500/30 bg-[#1F2023]/40 p-2 shadow-[0_8px_30px_rgba(0,0,0,0.24)] transition-all duration-300 liquid-glass backdrop-blur-xl glow-effect",
               isLoading && "border-red-500/70",
               className
             )}
@@ -408,7 +477,7 @@ const PromptInputTextarea: React.FC<
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={handleKeyDown}
-      className={cn("text-base", className)}
+      className={cn("text-base text-purple-50", className)}
       disabled={disabled}
       placeholder={placeholder}
       {...props}
@@ -597,25 +666,33 @@ export const PromptInputBox = React.forwardRef(
           isLoading={isLoading}
           onSubmit={handleSubmit}
           className={cn(
-            "ai-prompt-container w-full rounded-2xl border border-purple-500/40 bg-gradient-to-br from-purple-900/30 via-[#1F2023]/80 to-pink-900/30 shadow-2xl backdrop-blur-xl p-4 transition-all duration-300 ease-in-out",
-            // isRecording && "border-red-500/70", // Removed voice recording border
+            "ai-prompt-container w-full rounded-2xl border-[1.5px] border-purple-500/40 bg-gradient-to-br from-purple-900/30 via-[#1F2023]/60 to-pink-900/30 shadow-2xl p-4 transition-all duration-300 ease-in-out",
+            "after:absolute after:inset-0 after:rounded-2xl after:bg-gradient-to-br after:from-purple-500/10 after:via-transparent after:to-pink-500/10 after:z-[-1]",
+            "before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-purple-500/5 before:via-transparent before:to-pink-500/5 before:blur-xl before:z-[-1]",
             className
           )}
-          disabled={isLoading} // Removed voice recording disabled state
+          disabled={isLoading}
           ref={ref || promptBoxRef}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Animated gradient background */}
+          <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none z-[-1]">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 via-transparent to-pink-600/10 animate-pulse" style={{ animationDuration: '4s' }}></div>
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(236,72,153,0.15),transparent_70%)]"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(139,92,246,0.15),transparent_70%)]"></div>
+          </div>
+
           {files.length > 0 &&
-            !isLoading && ( // Removed voice recording file preview
+            !isLoading && (
               <div className="flex flex-wrap gap-2 p-0 pb-1 transition-all duration-300">
                 {files.map((file, index) => (
                   <div key={index} className="relative group">
                     {file.type.startsWith("image/") &&
                       filePreviews[file.name] && (
                         <div
-                          className="w-16 h-16 rounded-xl overflow-hidden cursor-pointer transition-all duration-300"
+                          className="w-16 h-16 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 border border-purple-500/30 shadow-lg shadow-purple-500/20"
                           onClick={() =>
                             openImageModal(filePreviews[file.name])
                           }
@@ -641,12 +718,7 @@ export const PromptInputBox = React.forwardRef(
               </div>
             )}
 
-          <div
-            className={cn(
-              "transition-all duration-300"
-              // isRecording ? "h-0 overflow-hidden opacity-0" : "opacity-100" // Removed voice recording div
-            )}
-          >
+          <div className="transition-all duration-300">
             <PromptInputTextarea
               placeholder={
                 showSearch
@@ -657,24 +729,17 @@ export const PromptInputBox = React.forwardRef(
                   ? "Create on canvas..."
                   : placeholder
               }
-              className="text-base"
+              className="text-base placeholder:text-purple-300/50"
             />
           </div>
 
-          {/* VoiceRecorder removed */}
-
           <PromptInputActions className="flex items-center justify-between gap-2 p-0 pt-2">
-            <div
-              className={cn(
-                "flex items-center gap-1 transition-opacity duration-300"
-                // isRecording ? "opacity-0 invisible h-0" : "opacity-100 visible" // Removed voice recording actions
-              )}
-            >
+            <div className="flex items-center gap-1 transition-opacity duration-300">
               <PromptInputAction tooltip="Upload image">
                 <button
                   onClick={() => uploadInputRef.current?.click()}
-                  className="flex h-8 w-8 text-[#9CA3AF] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-gray-600/30 hover:text-[#D1D5DB]"
-                  disabled={isLoading} // Removed voice recording disabled state
+                  className="flex h-8 w-8 text-purple-300/70 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-purple-500/20 hover:text-purple-200"
+                  disabled={isLoading}
                 >
                   <Paperclip className="h-5 w-5 transition-colors" />
                   <input
@@ -699,7 +764,7 @@ export const PromptInputBox = React.forwardRef(
                     "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
                     showSearch
                       ? "bg-[#1EAEDB]/15 border-[#1EAEDB] text-[#1EAEDB]"
-                      : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
+                      : "bg-transparent border-transparent text-purple-300/70 hover:text-purple-200 hover:bg-purple-500/10"
                   )}
                 >
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -755,7 +820,7 @@ export const PromptInputBox = React.forwardRef(
                     "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
                     showThink
                       ? "bg-[#8B5CF6]/15 border-[#8B5CF6] text-[#8B5CF6]"
-                      : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
+                      : "bg-transparent border-transparent text-purple-300/70 hover:text-purple-200 hover:bg-purple-500/10"
                   )}
                 >
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -811,7 +876,7 @@ export const PromptInputBox = React.forwardRef(
                     "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
                     showCanvas
                       ? "bg-[#F97316]/15 border-[#F97316] text-[#F97316]"
-                      : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
+                      : "bg-transparent border-transparent text-purple-300/70 hover:text-purple-200 hover:bg-purple-500/10"
                   )}
                 >
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -862,22 +927,22 @@ export const PromptInputBox = React.forwardRef(
 
             <PromptInputAction
               tooltip={
-                isLoading ? "Stop generation" : undefined // Remove 'Voice message' tooltip
+                isLoading ? "Stop generation" : undefined
               }
             >
               <Button
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 rounded-full transition-all duration-200 bg-gradient-to-br from-purple-900/60 via-[#232136]/80 to-pink-900/60 border border-purple-500/30 text-purple-200 hover:bg-purple-800/60 hover:text-pink-300 hover:border-pink-400/60 shadow-md",
+                  "h-8 w-8 rounded-full transition-all duration-200 bg-gradient-to-br from-purple-900/60 via-[#232136]/80 to-pink-900/60 border border-purple-500/30 text-purple-200 hover:bg-purple-800/60 hover:text-pink-300 hover:border-pink-400/60 shadow-md send-button-glow",
                   isLoading
                     ? "text-red-500 hover:text-red-400 border-red-500/40"
                     : hasContent
                     ? "hover:bg-gradient-to-br hover:from-pink-700/40 hover:to-purple-700/40 hover:text-pink-200"
-                    : "text-[#9CA3AF] hover:text-[#D1D5DB]"
+                    : "text-purple-300/70 hover:text-purple-200"
                 )}
                 onClick={() => {
-                  if (isLoading) return; // Should never be true now
+                  if (isLoading) return;
                   if (hasContent) handleSubmit();
                 }}
                 disabled={isLoading && !hasContent}

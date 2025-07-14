@@ -9,6 +9,7 @@ import GeminiService from "@/services/geminiService";
 // Import page components
 import Dashboard from "./pages/Dashboard";
 import NotionWorkspace from "./pages/NotionWorkspace";
+import Settings from "./pages/Settings"; // NEW
 
 // Import layout components
 import { Sidebar } from "./components/layout/Sidebar";
@@ -88,6 +89,8 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/notion" element={<NotionWorkspace />} />
               <Route path="/assistant" element={<Dashboard />} />
+              {/* Settings page route */}
+              <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
