@@ -142,7 +142,7 @@ messages/channels, and managing Google Calendar events.`,
           description:
             apiErrorMessage ||
             "API connection issue detected. Using offline mode.",
-          variant: "warning",
+          variant: "default",
           duration: 6000,
         });
       } else {
@@ -283,7 +283,7 @@ messages/channels, and managing Google Calendar events.`,
       };
 
       // Add user message to conversation
-      setMessages([userMessage]);
+      setMessages((prev) => [...prev, userMessage]);
       setCurrentTranscript("");
       setIsProcessing(true);
 
@@ -594,7 +594,7 @@ messages/channels, and managing Google Calendar events.`,
             ? apiErrorMessage ||
               "Using offline mode due to API connection issues."
             : "Failed to process your request. Please try again.",
-          variant: isOfflineMode ? "warning" : "destructive",
+          variant: isOfflineMode ? "default" : "destructive",
         });
       } finally {
         setIsProcessing(false);

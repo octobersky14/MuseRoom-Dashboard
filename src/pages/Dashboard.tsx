@@ -1,15 +1,34 @@
 import React, { useState, useEffect } from "react";
 import { VoiceAgent } from "@/components/VoiceAgent";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { motion } from "framer-motion";
 import { SplashCursor } from "@/components/ui/splash-cursor";
-import { Brain, MessageSquare, FileText, Calendar, Activity, Users, Clock } from "lucide-react";
+import {
+  Brain,
+  MessageSquare,
+  FileText,
+  Calendar,
+  Activity,
+  Users,
+  Clock,
+} from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { McpStatusIndicator } from "@/components/McpStatusIndicator";
+import { useAIAssistant } from "@/hooks/useAIAssistant";
 
 const Dashboard: React.FC = () => {
+  // AI Assistant hook for MCP functionality
+  const { mcpStatus, mcpTools } = useAIAssistant();
+
   // State
   const [selectedVoice, setSelectedVoice] = useState("JBFqnCBsd6RMkjVDRZzb"); // Default ElevenLabs voice (George)
   const [useElevenLabs, setUseElevenLabs] = useState(true);
@@ -20,10 +39,30 @@ const Dashboard: React.FC = () => {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState("");
   const [recentActivities, setRecentActivities] = useState([
-    { id: 1, title: "Updated AI Team project", time: "10 minutes ago", type: "notion" },
-    { id: 2, title: "New message in #general", time: "25 minutes ago", type: "discord" },
-    { id: 3, title: "Meeting scheduled: Weekly Sync", time: "1 hour ago", type: "calendar" },
-    { id: 4, title: "Task completed: Implement workspace analyzer", time: "3 hours ago", type: "notion" },
+    {
+      id: 1,
+      title: "Updated AI Team project",
+      time: "10 minutes ago",
+      type: "notion",
+    },
+    {
+      id: 2,
+      title: "New message in #general",
+      time: "25 minutes ago",
+      type: "discord",
+    },
+    {
+      id: 3,
+      title: "Meeting scheduled: Weekly Sync",
+      time: "1 hour ago",
+      type: "calendar",
+    },
+    {
+      id: 4,
+      title: "Task completed: Implement workspace analyzer",
+      time: "3 hours ago",
+      type: "notion",
+    },
   ]);
 
   const { toast } = useToast();
@@ -46,10 +85,30 @@ const Dashboard: React.FC = () => {
 
   // Stats data
   const statsData = [
-    { title: "AI Interactions", value: "328", icon: <Brain className="h-4 w-4" />, color: "from-purple-500 to-purple-700" },
-    { title: "Discord Messages", value: "124", icon: <MessageSquare className="h-4 w-4" />, color: "from-green-500 to-green-700" },
-    { title: "Notion Pages", value: "56", icon: <FileText className="h-4 w-4" />, color: "from-blue-500 to-blue-700" },
-    { title: "Calendar Events", value: "12", icon: <Calendar className="h-4 w-4" />, color: "from-amber-500 to-amber-700" },
+    {
+      title: "AI Interactions",
+      value: "328",
+      icon: <Brain className="h-4 w-4" />,
+      color: "from-purple-500 to-purple-700",
+    },
+    {
+      title: "Discord Messages",
+      value: "124",
+      icon: <MessageSquare className="h-4 w-4" />,
+      color: "from-green-500 to-green-700",
+    },
+    {
+      title: "Notion Pages",
+      value: "56",
+      icon: <FileText className="h-4 w-4" />,
+      color: "from-blue-500 to-blue-700",
+    },
+    {
+      title: "Calendar Events",
+      value: "12",
+      icon: <Calendar className="h-4 w-4" />,
+      color: "from-amber-500 to-amber-700",
+    },
   ];
 
   /* ----------------------------------------------------------------
@@ -130,35 +189,9 @@ const Dashboard: React.FC = () => {
               animate={{ opacity: 1 }}
               transition={{ duration: 0.8, delay: 0.3 }}
             >
-              Your intelligent workspace assistant
+              click below to begin :)
             </motion.p>
           </motion.div>
-
-          {/* Stats Cards Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {statsData.map((stat, index) => (
-              <motion.div
-                key={stat.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.1 * index }}
-              >
-                <Card className="bg-gray-900/60 border border-gray-800/60 backdrop-blur-sm hover:border-gray-700/60 transition-all duration-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-400 mb-1">{stat.title}</p>
-                        <p className="text-2xl font-bold text-white">{stat.value}</p>
-                      </div>
-                      <div className={`p-2 rounded-full bg-gradient-to-br ${stat.color} text-white`}>
-                        {stat.icon}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
 
           {/* AI Assistant Animation */}
           <motion.div
@@ -237,6 +270,47 @@ const Dashboard: React.FC = () => {
             )}
           </div>
 
+          {/* Stats Cards Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {statsData.map((stat, index) => (
+              <motion.div
+                key={stat.title}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1 * index }}
+              >
+                <Card className="bg-gray-900/60 border border-gray-800/60 backdrop-blur-sm hover:border-gray-700/60 transition-all duration-200">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-400 mb-1">
+                          {stat.title}
+                        </p>
+                        <p className="text-2xl font-bold text-white">
+                          {stat.value}
+                        </p>
+                      </div>
+                      <div
+                        className={`p-2 rounded-full bg-gradient-to-br ${stat.color} text-white`}
+                      >
+                        {stat.icon}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* MCP Status Indicator */}
+          <div className="mb-8">
+            <McpStatusIndicator
+              mcpStatus={mcpStatus}
+              mcpTools={mcpTools}
+              serverName="Notion MCP"
+            />
+          </div>
+
           {/* Recent Activity and Quick Access Section */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Recent Activity */}
@@ -251,7 +325,9 @@ const Dashboard: React.FC = () => {
                     View All
                   </Button>
                 </div>
-                <CardDescription>Latest updates from your workspace</CardDescription>
+                <CardDescription>
+                  Latest updates from your workspace
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -270,7 +346,9 @@ const Dashboard: React.FC = () => {
                         )}
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-200">{activity.title}</p>
+                        <p className="text-sm font-medium text-gray-200">
+                          {activity.title}
+                        </p>
                         <p className="text-xs text-gray-400 flex items-center mt-1">
                           <Clock className="h-3 w-3 mr-1 inline" />
                           {activity.time}
@@ -293,27 +371,33 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {["Agentic AI", "Design/UI UX", "Marketing", "DAW"].map((team, i) => (
-                    <div
-                      key={team}
-                      className="p-3 rounded-lg border border-gray-800 hover:border-purple-500/30 hover:bg-gray-800/40 transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-gray-200">{team}</span>
-                        <span className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-400">
-                          {[8, 5, 4, 3][i]} members
-                        </span>
+                  {["Agentic AI", "Design/UI UX", "Marketing", "DAW"].map(
+                    (team, i) => (
+                      <div
+                        key={team}
+                        className="p-3 rounded-lg border border-gray-800 hover:border-purple-500/30 hover:bg-gray-800/40 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-200">
+                            {team}
+                          </span>
+                          <span className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-400">
+                            {[8, 5, 4, 3][i]} members
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs text-gray-400">
+                          {
+                            [
+                              "Working on AI integration features",
+                              "Redesigning the dashboard UI",
+                              "Planning Q3 marketing campaign",
+                              "Audio engine improvements",
+                            ][i]
+                          }
+                        </div>
                       </div>
-                      <div className="mt-2 text-xs text-gray-400">
-                        {[
-                          "Working on AI integration features",
-                          "Redesigning the dashboard UI",
-                          "Planning Q3 marketing campaign",
-                          "Audio engine improvements",
-                        ][i]}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               </CardContent>
             </Card>

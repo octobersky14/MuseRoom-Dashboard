@@ -17,6 +17,14 @@ import NotionMcpService, {
   McpCreatePageRequest,
   McpUpdatePageRequest,
 } from "@/services/notionMcpService";
+import McpClientService, {
+  McpConnection,
+  McpTool,
+  McpResource,
+  McpPrompt,
+  McpToolResult,
+} from "@/services/mcpClientService";
+import { loadMcpConfig, getMcpConnection } from "@/utils/mcpConfigLoader";
 
 // Define message interface
 export interface Message {
@@ -26,7 +34,12 @@ export interface Message {
   timestamp: Date;
   intent?: string;
   intentConfidence?: number;
-  source?: "gemini" | "notion" | "discord" | "calendar";
+  source?: "gemini" | "notion" | "discord" | "calendar" | "mcp";
+  toolCalls?: Array<{
+    tool: string;
+    args: any;
+    result?: any;
+  }>;
 }
 
 // Define hook return type
@@ -59,21 +72,28 @@ interface UseAIAssistantReturn {
   notionAuthStatus: AuthStatus;
   connectToNotion: () => Promise<void>;
   authenticateNotion: () => Promise<void>;
-  getNotionPages: () => Promise<NotionPage[]>;
-  getNotionDatabases: () => Promise<NotionDatabase[]>;
+  getNotionPages: () => Promise<any>;
+  getNotionDatabases: () => Promise<any>;
   createNotionPage: (
     request: CreatePageRequest | McpCreatePageRequest
-  ) => Promise<NotionPage | McpPageResponse>;
-  searchNotion: (query: string) => Promise<{
-    results: (NotionPage | NotionDatabase)[];
-    next_cursor?: string;
-    has_more: boolean;
-  }>;
+  ) => Promise<any>;
+  searchNotion: (query: string) => Promise<any>;
   performNotionAction: (
     action: "create" | "read" | "update" | "delete" | "search" | "list",
     resourceType: "page" | "database" | "block" | "user",
     params?: Record<string, any>
   ) => Promise<any>;
+  // MCP client functions
+  mcpClient: McpClientService | null;
+  mcpStatus: "connecting" | "connected" | "disconnected" | "error";
+  mcpTools: McpTool[];
+  mcpResources: McpResource[];
+  mcpPrompts: McpPrompt[];
+  connectToMcpServer: (connection: McpConnection) => Promise<void>;
+  disconnectFromMcpServer: () => void;
+  callMcpTool: (name: string, args: any) => Promise<McpToolResult>;
+  getMcpResource: (uri: string) => Promise<any>;
+  getMcpPrompt: (name: string, args?: Record<string, any>) => Promise<any>;
 }
 
 // Define hook options
@@ -93,11 +113,13 @@ interface UseAIAssistantOptions {
   ) => void;
   notionMcpMode?: "direct" | "proxy" | "offline";
   notionMcpUrl?: string;
+  mcpConnections?: McpConnection[];
 }
 
 /**
  * React hook for a unified AI assistant that integrates Gemini with Notion
  * using either the official Notion MCP, proxy server, or offline mode
+ * and supports dynamic MCP server connections
  */
 export const useAIAssistant = (
   options: UseAIAssistantOptions = {}
@@ -119,6 +141,7 @@ export const useAIAssistant = (
       | "offline") || "direct",
     notionMcpUrl = import.meta.env.VITE_NOTION_MCP_URL ||
       "https://mcp.notion.com/sse",
+    mcpConnections = [],
   } = options;
 
   // State
@@ -143,13 +166,58 @@ export const useAIAssistant = (
     AuthStatus.UNAUTHENTICATED
   );
 
+  // MCP Client state
+  const [mcpStatus, setMcpStatus] = useState<
+    "connecting" | "connected" | "disconnected" | "error"
+  >("disconnected");
+  const [mcpTools, setMcpTools] = useState<McpTool[]>([]);
+  const [mcpResources, setMcpResources] = useState<McpResource[]>([]);
+  const [mcpPrompts, setMcpPrompts] = useState<McpPrompt[]>([]);
+
   // Refs
   const geminiServiceRef = useRef<GeminiService | null>(null);
   const notionServiceRef = useRef<NotionService | null>(null);
   const notionMcpServiceRef = useRef<NotionMcpService | null>(null);
+  const mcpClientRef = useRef<McpClientService | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const workspaceAnalyzerRef = useRef<WorkspaceAnalyzer | null>(null); // NEW
   const [workspaceSummary, setWorkspaceSummary] = useState<string>(""); // NEW
+
+  // Initialize MCP client
+  useEffect(() => {
+    mcpClientRef.current = new McpClientService({
+      name: "MuseRoom Assistant",
+      version: "1.0.0",
+      onNotification: (notification) => {
+        console.log("MCP Notification:", notification);
+      },
+      onError: (error) => {
+        console.error("MCP Error:", error);
+        if (onError) onError(error);
+      },
+      onStatusChange: (status) => {
+        setMcpStatus(status);
+
+        // Update available tools, resources, and prompts when connected
+        if (status === "connected" && mcpClientRef.current) {
+          setMcpTools(mcpClientRef.current.getTools());
+          setMcpResources(mcpClientRef.current.getResources());
+          setMcpPrompts(mcpClientRef.current.getPrompts());
+        }
+      },
+    });
+
+    // Connect to any initial MCP servers
+    mcpConnections.forEach((connection) => {
+      connectToMcpServer(connection);
+    });
+
+    return () => {
+      if (mcpClientRef.current) {
+        mcpClientRef.current.disconnect();
+      }
+    };
+  }, []);
 
   // Initialize services
   useEffect(() => {
@@ -173,7 +241,11 @@ to provide authentication tokens, API keys, or any credentials.
 
 Be helpful, concise, and friendly while assisting with tasks such as creating,
 reading, updating, or searching Notion pages/databases, interacting with Discord
-messages/channels, and managing Google Calendar events.`;
+messages/channels, and managing Google Calendar events.
+
+You also have access to MCP (Model Context Protocol) servers that provide additional
+tools, resources, and prompts. When a user asks about available tools or capabilities,
+you can list the MCP tools that are currently connected.`;
 
         // If we already have a workspace summary, append it now
         if (workspaceSummary) {
@@ -254,20 +326,21 @@ messages/channels, and managing Google Calendar events.`;
       );
     }
 
+    // TODO: Re-enable workspace analyzer once MCP integration is complete
     // Initialise workspace analyser once Notion service is ready
-    if (notionApiKey && !workspaceAnalyzerRef.current) {
-      workspaceAnalyzerRef.current = new WorkspaceAnalyzer(notionApiKey);
-      // Fetch summary async
-      (async () => {
-        try {
-          const summary =
-            await workspaceAnalyzerRef.current!.getWorkspaceSummary();
-          setWorkspaceSummary(summary);
-        } catch (err) {
-          console.warn("Failed to fetch workspace summary:", err);
-        }
-      })();
-    }
+    // if (notionApiKey && !workspaceAnalyzerRef.current) {
+    //   workspaceAnalyzerRef.current = new WorkspaceAnalyzer(notionApiKey);
+    //   // Fetch summary async
+    //   (async () => {
+    //     try {
+    //       const summary =
+    //         await workspaceAnalyzerRef.current!.getWorkspaceSummary();
+    //       setWorkspaceSummary(summary);
+    //     } catch (err) {
+    //       console.warn("Failed to fetch workspace summary:", err);
+    //     }
+    //   })();
+    // }
 
     // Clean up on unmount
     return () => {
@@ -278,6 +351,10 @@ messages/channels, and managing Google Calendar events.`;
 
       if (notionMcpServiceRef.current) {
         notionMcpServiceRef.current.disconnect();
+      }
+
+      if (mcpClientRef.current) {
+        mcpClientRef.current.disconnect();
       }
     };
   }, [
@@ -295,16 +372,156 @@ messages/channels, and managing Google Calendar events.`;
   useEffect(() => {
     if (workspaceSummary && geminiServiceRef.current) {
       const current = geminiServiceRef.current;
-      // Re-apply system instruction including summary
-      const existing = current.getSystemInstruction?.() || ""; // optional helper
-      // Avoid duplication
-      if (!existing.includes(workspaceSummary)) {
-        current.setSystemInstruction(
-          `${existing}\n\n---\n# Workspace Overview\n${workspaceSummary}`
-        );
-      }
+      // Re-apply system instruction including summary with the base instruction
+      const baseInstruction =
+        systemInstruction ||
+        `You are an AI assistant integrated into the MuseRoom Dashboard.
+You ALREADY have fully authenticated access (via secure backend services) to:
+• The user's Notion workspace
+• The user's Discord server/channels
+• The user's Google Calendar
+
+All required API keys and credentials are managed by the system—never ask the user
+to provide authentication tokens, API keys, or any credentials.
+
+Be helpful, concise, and friendly while assisting with tasks such as creating,
+reading, updating, or searching Notion pages/databases, interacting with Discord
+messages/channels, and managing Google Calendar events.
+
+You also have access to MCP (Model Context Protocol) servers that provide additional
+tools, resources, and prompts. When a user asks about available tools or capabilities,
+you can list the MCP tools that are currently connected.`;
+
+      current.setSystemInstruction(
+        `${baseInstruction}\n\n---\n# Workspace Overview\n${workspaceSummary}`
+      );
     }
-  }, [workspaceSummary]);
+  }, [workspaceSummary, systemInstruction]);
+
+  // Connect to an MCP server
+  const connectToMcpServer = useCallback(
+    async (connection: McpConnection): Promise<void> => {
+      if (!mcpClientRef.current) {
+        throw new Error("MCP client not initialized");
+      }
+
+      try {
+        await mcpClientRef.current.connect(connection);
+
+        // Update available tools after connection
+        setMcpTools(mcpClientRef.current.getTools());
+        setMcpResources(mcpClientRef.current.getResources());
+        setMcpPrompts(mcpClientRef.current.getPrompts());
+      } catch (error) {
+        console.error("Failed to connect to MCP server:", error);
+        if (onError) onError(error as Error);
+        throw error;
+      }
+    },
+    [onError]
+  );
+
+  // Disconnect from MCP server
+  const disconnectFromMcpServer = useCallback((): void => {
+    if (mcpClientRef.current) {
+      mcpClientRef.current.disconnect();
+      setMcpTools([]);
+      setMcpResources([]);
+      setMcpPrompts([]);
+    }
+  }, []);
+
+  // Auto-connect to Notion MCP server
+  const autoConnectToNotionMcp = useCallback(async (): Promise<void> => {
+    try {
+      // Check if Notion MCP is configured
+      const notionConnection = await getMcpConnection("notionMCP");
+      if (notionConnection && mcpClientRef.current) {
+        console.log("Auto-connecting to Notion MCP server...");
+        await connectToMcpServer(notionConnection);
+        console.log("Successfully connected to Notion MCP server");
+      }
+    } catch (error) {
+      console.error("Failed to auto-connect to Notion MCP:", error);
+      // Don't throw error - this is optional functionality
+    }
+  }, [connectToMcpServer]);
+
+  // Auto-connect to Notion MCP server on app load
+  useEffect(() => {
+    // Wait a bit for the MCP client to initialize, then auto-connect
+    const timer = setTimeout(() => {
+      autoConnectToNotionMcp();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [autoConnectToNotionMcp]);
+
+  // Call an MCP tool
+  const callMcpTool = useCallback(
+    async (name: string, args: any = {}): Promise<McpToolResult> => {
+      if (!mcpClientRef.current) {
+        throw new Error("MCP client not initialized");
+      }
+
+      if (mcpStatus !== "connected") {
+        throw new Error("Not connected to MCP server");
+      }
+
+      try {
+        return await mcpClientRef.current.callTool(name, args);
+      } catch (error) {
+        console.error(`Failed to call MCP tool ${name}:`, error);
+        if (onError) onError(error as Error);
+        throw error;
+      }
+    },
+    [mcpStatus, onError]
+  );
+
+  // Get an MCP resource
+  const getMcpResource = useCallback(
+    async (uri: string): Promise<any> => {
+      if (!mcpClientRef.current) {
+        throw new Error("MCP client not initialized");
+      }
+
+      if (mcpStatus !== "connected") {
+        throw new Error("Not connected to MCP server");
+      }
+
+      try {
+        return await mcpClientRef.current.readResource(uri);
+      } catch (error) {
+        console.error(`Failed to read MCP resource ${uri}:`, error);
+        if (onError) onError(error as Error);
+        throw error;
+      }
+    },
+    [mcpStatus, onError]
+  );
+
+  // Get an MCP prompt
+  const getMcpPrompt = useCallback(
+    async (name: string, args: Record<string, any> = {}): Promise<any> => {
+      if (!mcpClientRef.current) {
+        throw new Error("MCP client not initialized");
+      }
+
+      if (mcpStatus !== "connected") {
+        throw new Error("Not connected to MCP server");
+      }
+
+      try {
+        return await mcpClientRef.current.getPrompt(name, args);
+      } catch (error) {
+        console.error(`Failed to get MCP prompt ${name}:`, error);
+        if (onError) onError(error as Error);
+        throw error;
+      }
+    },
+    [mcpStatus, onError]
+  );
 
   // Connect to Notion MCP
   const connectToNotion = useCallback(async (): Promise<void> => {
@@ -744,8 +961,14 @@ messages/channels, and managing Google Calendar events.`;
             intentResult.action === "list"
           ) {
             // Get pages and databases to provide context
-            const pages = await getNotionPages();
-            const databases = await getNotionDatabases();
+            const pagesResult = await getNotionPages();
+            const databasesResult = await getNotionDatabases();
+
+            // Ensure we have arrays
+            const pages = Array.isArray(pagesResult) ? pagesResult : [];
+            const databases = Array.isArray(databasesResult)
+              ? databasesResult
+              : [];
 
             notionContext = `
               I found ${pages.length} pages and ${
@@ -755,14 +978,14 @@ messages/channels, and managing Google Calendar events.`;
               Pages:
               ${pages
                 .slice(0, 5)
-                .map((page) => `- ${page.title || "Untitled"}`)
+                .map((page: any) => `- ${page.title || "Untitled"}`)
                 .join("\n")}
               ${pages.length > 5 ? `...and ${pages.length - 5} more` : ""}
               
               Databases:
               ${databases
                 .slice(0, 5)
-                .map((db) => `- ${db.title || "Untitled"}`)
+                .map((db: any) => `- ${db.title || "Untitled"}`)
                 .join("\n")}
               ${
                 databases.length > 5
@@ -787,7 +1010,8 @@ messages/channels, and managing Google Calendar events.`;
                   "page",
                   pageId
                 );
-                content = pageData.content || "";
+                // Only pages have content property
+                content = (pageData as McpPageResponse).content || "";
               } else if (notionServiceRef.current) {
                 pageData = await notionServiceRef.current.getPage(pageId);
                 content = await notionServiceRef.current.getPageContent(pageId);
@@ -847,6 +1071,55 @@ messages/channels, and managing Google Calendar events.`;
     [getNotionPages, getNotionDatabases]
   );
 
+  // Process message with MCP tools
+  const processMessageWithMcpTools = useCallback(
+    async (messageText: string, response: string): Promise<string> => {
+      // Check if the response suggests using MCP tools
+      const toolCalls: Array<{
+        tool: string;
+        args: any;
+        result?: any;
+      }> = [];
+
+      // Simple pattern matching for tool calls
+      // In a real implementation, you'd want more sophisticated parsing
+      const toolPattern =
+        /use tool "([^"]+)" with (?:args|arguments) (\{[^}]+\})/gi;
+      let match;
+
+      while ((match = toolPattern.exec(response)) !== null) {
+        const toolName = match[1];
+        try {
+          const args = JSON.parse(match[2]);
+
+          // Check if this is an MCP tool
+          const mcpTool = mcpTools.find((t) => t.name === toolName);
+          if (mcpTool) {
+            const result = await callMcpTool(toolName, args);
+            toolCalls.push({ tool: toolName, args, result });
+
+            // Replace the tool call in the response with the result
+            const resultText =
+              result.content?.map((c) => c.text || "").join("\n") ||
+              "Tool executed successfully";
+            response = response.replace(
+              match[0],
+              `[Tool ${toolName} result: ${resultText}]`
+            );
+          }
+        } catch (error) {
+          console.error(
+            `Failed to parse or execute tool call: ${match[0]}`,
+            error
+          );
+        }
+      }
+
+      return response;
+    },
+    [mcpTools, callMcpTool]
+  );
+
   // Send a message to the AI and get a response
   const sendMessage = useCallback(
     async (messageText: string): Promise<string> => {
@@ -891,10 +1164,15 @@ messages/channels, and managing Google Calendar events.`;
         }
 
         // Process the message with Notion context if needed
-        const response = await processMessageWithNotionContext(
+        let response = await processMessageWithNotionContext(
           messageText,
           intentResult
         );
+
+        // Process with MCP tools if any are available
+        if (mcpTools.length > 0) {
+          response = await processMessageWithMcpTools(messageText, response);
+        }
 
         // Add assistant response to state
         const assistantMessage: Message = {
@@ -904,7 +1182,12 @@ messages/channels, and managing Google Calendar events.`;
           timestamp: new Date(),
           intent: intentResult.intent,
           intentConfidence: intentResult.confidence,
-          source: intentResult.intent === "notion" ? "notion" : "gemini",
+          source:
+            intentResult.intent === "notion"
+              ? "notion"
+              : mcpTools.length > 0
+              ? "mcp"
+              : "gemini",
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
@@ -947,7 +1230,9 @@ messages/channels, and managing Google Calendar events.`;
       onError,
       onIntentDetected,
       processMessageWithNotionContext,
+      processMessageWithMcpTools,
       detectIntent,
+      mcpTools,
     ]
   );
 
@@ -1084,6 +1369,17 @@ messages/channels, and managing Google Calendar events.`;
     createNotionPage,
     searchNotion,
     performNotionAction,
+    // MCP client functions
+    mcpClient: mcpClientRef.current,
+    mcpStatus,
+    mcpTools,
+    mcpResources,
+    mcpPrompts,
+    connectToMcpServer,
+    disconnectFromMcpServer,
+    callMcpTool,
+    getMcpResource,
+    getMcpPrompt,
   };
 };
 
