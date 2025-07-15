@@ -190,7 +190,11 @@ export class MCPClient {
           const toolArgs = content.input as { [x: string]: unknown } | undefined;
 
           this.logDebug(`Executing tool: ${toolName} with args:`, toolArgs);
-          
+
+          function generateUniqueId() {
+            return Math.random().toString(36).substring(2, 11);
+          }
+
           try {
             const result = await this.mcp.callTool({
               name: toolName,
@@ -205,12 +209,19 @@ export class MCPClient {
             // Continue conversation with tool results
             messages.push({
               role: "assistant",
-              content: [{ type: "tool_use", name: toolName, input: toolArgs }],
+              content: [
+                {
+                  id: generateUniqueId(),
+                  type: "tool_use",
+                  name: toolName,
+                  input: toolArgs,
+                },
+              ],
             });
             
             messages.push({
               role: "user",
-              content: [{ type: "tool_result", tool_use_id: content.id, content: result.content }],
+              content: [{ type: "tool_result", tool_use_id: content.id, content: result.content as string }],
             });
 
             // Get next response from Claude
