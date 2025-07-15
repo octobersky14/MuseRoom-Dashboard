@@ -1,20 +1,12 @@
 // Fixed MCP Chat Netlify Function
 // This function properly imports and uses the MCP client with better error handling
 
-// Use dynamic import for ES module compatibility
-let MCPClient;
+// Import the lightweight JavaScript MCP client that ships with the functions
+import { MCPClient } from "./mcp-client-simple.js";
 
 exports.handler = async function (event, context) {
   console.log("MCP Chat function invoked");
 
-  // Resolve absolute path to the local built MCP client implementation
-  // The file lives at: projectRoot/mcp-client-typescript/build/index.js
-  // From this function file (netlify/functions/*) we need to go two levels up
-  const localMcpPath = new URL(
-    "../../mcp-client-typescript/build/index.js",
-    import.meta.url
-  ).pathname;
-  
   // Check for valid request method
   if (event.httpMethod !== "POST") {
     return {
@@ -56,47 +48,10 @@ exports.handler = async function (event, context) {
   try {
     // Set the API key in environment for the MCP client to use
     process.env.ANTHROPIC_API_KEY = apiKey;
-    
-    // Dynamically import the MCP client (works with ES modules)
-    if (!MCPClient) {
-      try {
-        // Prefer the *local* build (handles both ESM & CJS exports)
-        const esmModule = await import(localMcpPath);
-        MCPClient =
-          esmModule.MCPClient ||
-          esmModule.default?.MCPClient ||
-          esmModule.default ||
-          esmModule;
-      } catch (importErr) {
-        console.warn(
-          "ES module import failed, falling back to CommonJS require:",
-          importErr?.message || importErr
-        );
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const cjsModule = require(localMcpPath);
-          MCPClient =
-            cjsModule.MCPClient ||
-            cjsModule.default?.MCPClient ||
-            cjsModule.default ||
-            cjsModule;
-        } catch (cjsErr) {
-          console.error(
-            "CommonJS require also failed for local MCP client:",
-            cjsErr?.message || cjsErr
-          );
-          throw cjsErr;
-        }
-      }
-    }
-
-    if (!MCPClient) {
-      throw new Error("Failed to import MCPClient from mcp-client-typescript");
-    }
 
     // Create MCP client instance
     // Note: The constructor reads ANTHROPIC_API_KEY from process.env directly
-  const mcp = new MCPClient({
+    const mcp = new MCPClient({
     debug: process.env.NODE_ENV === "development",
   });
     
