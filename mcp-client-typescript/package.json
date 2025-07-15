@@ -4,8 +4,7 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc --outDir dist && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
-    "prepublishOnly": "npm run build"
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\""
   },
   "keywords": [],
   "author": "",
@@ -26,9 +25,6 @@
       "require": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "engines": {
     "node": ">=16.0.0"
   }

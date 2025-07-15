@@ -13,8 +13,7 @@
     "mcp:direct": "./run-mcp-services.sh --mode direct",
     "mcp:proxy": "./run-mcp-services.sh --mode proxy",
     "mcp:offline": "./run-mcp-services.sh --mode offline",
-    "start": "npm run build && npm run preview",
-    "netlify:build": "./netlify-build.sh"
+    "start": "npm run build && npm run preview"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.33.0",
@@ -45,7 +44,7 @@
     "express": "^5.1.0",
     "framer-motion": "^10.18.0",
     "lucide-react": "^0.294.0",
-    "mcp-client-typescript": "file:./mcp-client-typescript",
+    "mcp-client-typescript": "^1.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.6.3",

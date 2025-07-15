@@ -6,14 +6,6 @@ let MCPClient;
 
 exports.handler = async function (event, context) {
   console.log("MCP Chat function invoked");
-
-  // Resolve absolute path to the local built MCP client implementation
-  // The file lives at: projectRoot/mcp-client-typescript/dist/index.js
-  // From this function file (netlify/functions/*) we need to go two levels up
-  const localMcpPath = new URL(
-    "../../mcp-client-typescript/dist/index.js",
-    import.meta.url
-  ).pathname;
   
   // Check for valid request method
   if (event.httpMethod !== "POST") {
@@ -60,33 +52,13 @@ exports.handler = async function (event, context) {
     // Dynamically import the MCP client (works with ES modules)
     if (!MCPClient) {
       try {
-        // Prefer the *local* build (handles both ESM & CJS exports)
-        const esmModule = await import(localMcpPath);
-        MCPClient =
-          esmModule.MCPClient ||
-          esmModule.default?.MCPClient ||
-          esmModule.default ||
-          esmModule;
+        // Try importing as ES module first
+        const module = await import('mcp-client-typescript');
+        MCPClient = module.MCPClient;
       } catch (importErr) {
-        console.warn(
-          "ES module import failed, falling back to CommonJS require:",
-          importErr?.message || importErr
-        );
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const cjsModule = require(localMcpPath);
-          MCPClient =
-            cjsModule.MCPClient ||
-            cjsModule.default?.MCPClient ||
-            cjsModule.default ||
-            cjsModule;
-        } catch (cjsErr) {
-          console.error(
-            "CommonJS require also failed for local MCP client:",
-            cjsErr?.message || cjsErr
-          );
-          throw cjsErr;
-        }
+        console.log("ES module import failed, trying CommonJS require:", importErr);
+        // Fall back to CommonJS require
+        MCPClient = require('mcp-client-typescript').MCPClient;
       }
     }
 
