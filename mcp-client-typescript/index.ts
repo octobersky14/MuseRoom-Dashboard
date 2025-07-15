@@ -6,7 +6,7 @@ import {
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import readline from "readline/promises";
+import readline from "node:readline/promises";
 
 import dotenv from "dotenv";
 
@@ -21,7 +21,7 @@ dotenv.config(); // load environment variables from .env when present
 /**
  * MCP Client for connecting to Model Context Protocol servers
  * and processing queries using Claude.
- * 
+ *
  * This client can be used in both CLI and serverless environments like Netlify Functions.
  */
 export class MCPClient {
@@ -52,20 +52,22 @@ export class MCPClient {
   }) {
     // Support both object-style and string-only constructor for backwards compatibility
     let resolvedApiKey;
-    
-    if (typeof options === 'string') {
+
+    if (typeof options === "string") {
       // Handle legacy string-only constructor
       resolvedApiKey = options;
     } else {
       // Handle new object-style constructor
-      resolvedApiKey = options?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+      resolvedApiKey =
+        options?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
       this.model = options?.model || this.model;
       this.maxTokens = options?.maxTokens || this.maxTokens;
       this.debug = options?.debug || this.debug;
     }
 
     if (!resolvedApiKey) {
-      const errorMsg = "MCPClient initialization failed: ANTHROPIC_API_KEY missing. " +
+      const errorMsg =
+        "MCPClient initialization failed: ANTHROPIC_API_KEY missing. " +
         "Provide it via constructor argument or environment variable.";
       this.logError(errorMsg);
       throw new Error("ANTHROPIC_API_KEY is not set");
@@ -76,11 +78,11 @@ export class MCPClient {
       this.anthropic = new Anthropic({
         apiKey: resolvedApiKey,
       });
-      this.mcp = new Client({ 
-        name: "mcp-client-typescript", 
-        version: "1.0.0" 
+      this.mcp = new Client({
+        name: "mcp-client-typescript",
+        version: "1.0.0",
       });
-      
+
       this.logDebug("MCPClient initialized successfully");
     } catch (error) {
       this.logError("Failed to initialize MCPClient", error);
@@ -98,32 +100,34 @@ export class MCPClient {
   async connectToServer(serverScriptPath: string): Promise<void> {
     try {
       this.logDebug(`Connecting to MCP server: ${serverScriptPath}`);
-      
+
       // Determine script type and appropriate command
       const isJs = serverScriptPath.endsWith(".js");
       const isPy = serverScriptPath.endsWith(".py");
-      
+
       if (!isJs && !isPy) {
         throw new Error("Server script must be a .js or .py file");
       }
-      
+
       const command = isPy
         ? process.platform === "win32"
           ? "python"
           : "python3"
         : process.execPath;
 
-      this.logDebug(`Using command: ${command} with args: [${serverScriptPath}]`);
+      this.logDebug(
+        `Using command: ${command} with args: [${serverScriptPath}]`
+      );
 
       // Initialize transport and connect to server
       this.transport = new StdioClientTransport({
         command,
         args: [serverScriptPath],
       });
-      
+
       await this.mcp.connect(this.transport);
       this.isConnected = true;
-      
+
       // List available tools
       const toolsResult = await this.mcp.listTools();
       this.tools = toolsResult.tools.map((tool) => {
@@ -133,14 +137,20 @@ export class MCPClient {
           input_schema: tool.inputSchema,
         };
       });
-      
+
       this.logDebug(
-        `Connected to server with ${this.tools.length} tools: ${this.tools.map(({ name }) => name).join(", ")}`
+        `Connected to server with ${this.tools.length} tools: ${this.tools
+          .map(({ name }) => name)
+          .join(", ")}`
       );
     } catch (error) {
       this.isConnected = false;
       this.logError("Failed to connect to MCP server", error);
-      throw new Error(`Failed to connect to MCP server: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to connect to MCP server: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   }
 
@@ -154,13 +164,13 @@ export class MCPClient {
   async processQuery(query: string): Promise<string> {
     try {
       this.logDebug(`Processing query: ${query}`);
-      
+
       // For Netlify functions, we don't require server connection
       // since we're using Claude directly with tools defined in the query
       if (!this.isConnected && this.tools.length === 0) {
         this.logDebug("No server connected, processing query with Claude only");
       }
-      
+
       const messages: MessageParam[] = [
         {
           role: "user",
@@ -187,7 +197,9 @@ export class MCPClient {
         } else if (content.type === "tool_use") {
           // Execute tool call
           const toolName = content.name;
-          const toolArgs = content.input as { [x: string]: unknown } | undefined;
+          const toolArgs = content.input as
+            | { [x: string]: unknown }
+            | undefined;
 
           this.logDebug(`Executing tool: ${toolName} with args:`, toolArgs);
 
@@ -200,10 +212,12 @@ export class MCPClient {
               name: toolName,
               arguments: toolArgs,
             });
-            
+
             toolResults.push(result);
             finalText.push(
-              `[Tool ${toolName} executed with args ${JSON.stringify(toolArgs)}]`
+              `[Tool ${toolName} executed with args ${JSON.stringify(
+                toolArgs
+              )}]`
             );
 
             // Continue conversation with tool results
@@ -218,10 +232,16 @@ export class MCPClient {
                 },
               ],
             });
-            
+
             messages.push({
               role: "user",
-              content: [{ type: "tool_result", tool_use_id: content.id, content: result.content as string }],
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: content.id,
+                  content: result.content as string,
+                },
+              ],
             });
 
             // Get next response from Claude
@@ -233,31 +253,39 @@ export class MCPClient {
             });
 
             finalText.push(
-              followUpResponse.content[0].type === "text" 
-                ? followUpResponse.content[0].text 
+              followUpResponse.content[0].type === "text"
+                ? followUpResponse.content[0].text
                 : ""
             );
           } catch (toolError) {
             this.logError(`Error executing tool ${toolName}:`, toolError);
             finalText.push(
-              `[Error executing tool ${toolName}: ${toolError instanceof Error ? toolError.message : String(toolError)}]`
+              `[Error executing tool ${toolName}: ${
+                toolError instanceof Error
+                  ? toolError.message
+                  : String(toolError)
+              }]`
             );
-            
+
             // Inform Claude about the tool error
             messages.push({
               role: "user",
-              content: `Error executing tool ${toolName}: ${toolError instanceof Error ? toolError.message : String(toolError)}`,
+              content: `Error executing tool ${toolName}: ${
+                toolError instanceof Error
+                  ? toolError.message
+                  : String(toolError)
+              }`,
             });
-            
+
             const errorResponse = await this.anthropic.messages.create({
               model: this.model,
               max_tokens: this.maxTokens,
               messages,
             });
-            
+
             finalText.push(
-              errorResponse.content[0].type === "text" 
-                ? errorResponse.content[0].text 
+              errorResponse.content[0].type === "text"
+                ? errorResponse.content[0].text
                 : ""
             );
           }
@@ -265,11 +293,17 @@ export class MCPClient {
       }
 
       const result = finalText.join("\n");
-      this.logDebug(`Query processing complete, response length: ${result.length} chars`);
+      this.logDebug(
+        `Query processing complete, response length: ${result.length} chars`
+      );
       return result;
     } catch (error) {
       this.logError("Error processing query:", error);
-      throw new Error(`Failed to process query: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to process query: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   }
 
@@ -281,7 +315,7 @@ export class MCPClient {
     if (typeof process === "undefined" || typeof readline === "undefined") {
       throw new Error("Chat loop is only available in Node.js environment");
     }
-    
+
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -296,12 +330,15 @@ export class MCPClient {
         if (message.toLowerCase() === "quit") {
           break;
         }
-        
+
         try {
           const response = await this.processQuery(message);
           console.log("\n" + response);
         } catch (error) {
-          console.error("\nError:", error instanceof Error ? error.message : String(error));
+          console.error(
+            "\nError:",
+            error instanceof Error ? error.message : String(error)
+          );
         }
       }
     } finally {
@@ -399,14 +436,17 @@ async function main() {
     console.log("Usage: node build/index.js <path_to_server_script>");
     return;
   }
-  
+
   const mcpClient = new MCPClient();
-  
+
   try {
     await mcpClient.connectToServer(process.argv[2]);
     await mcpClient.chatLoop();
   } catch (error) {
-    console.error("Fatal error:", error instanceof Error ? error.message : String(error));
+    console.error(
+      "Fatal error:",
+      error instanceof Error ? error.message : String(error)
+    );
     process.exit(1);
   } finally {
     await mcpClient.cleanup();
