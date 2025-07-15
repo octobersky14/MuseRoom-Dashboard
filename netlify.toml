@@ -13,11 +13,7 @@
 [build.processing.functions]
   node_bundler = "esbuild"
 
-# Redirect API calls to the functions
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+# Note: No need to redirect .netlify/functions/* - they work automatically
 
 # Handle SPA routing
 [[redirects]]
