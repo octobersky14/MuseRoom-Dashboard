@@ -41,11 +41,8 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  # Ensure only the compiled output (build) is shipped with the function
-  included_files = ["mcp-client-typescript/build/**"]
-  # Mark mcp-client-typescript as external so esbuild does NOT bundle it;
-  # the compiled output is copied via included_files instead.
-  external_node_modules = ["mcp-client-typescript", "@anthropic-ai/sdk", "@modelcontextprotocol/sdk"]
+  # Mark external dependencies that should not be bundled by esbuild
+  external_node_modules = ["@anthropic-ai/sdk", "@modelcontextprotocol/sdk"]
 
 # Development-specific overrides
 [context.development.environment]
