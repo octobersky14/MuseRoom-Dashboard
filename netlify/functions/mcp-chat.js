@@ -1,5 +1,4 @@
-const { MCPClient } = require("../../mcp-client-typescript/index");
-
+const { MCPClient } = require("mcp-client-typescript");
 exports.handler = async function (event, context) {
   const { message } = JSON.parse(event.body || "{}");
   const apiKey = process.env.ANTHROPIC_API_KEY;
