@@ -1,13 +1,8 @@
 // netlify/functions/mcp-chat.js
-import { MCPClient as Named } from "mcp-client-typescript";
+const mcpModule = require("mcp-client-typescript");
+const MCPClient = mcpModule.MCPClient || mcpModule.default || mcpModule;
 
-// Fallbacks for the various bundle shapes esbuild sometimes produces
-const MCPClient =
-  Named ??
-  (await import("mcp-client-typescript")).default ??
-  (await import("mcp-client-typescript")).MCPClient;
-
-export async function handler(event, context) {
+exports.handler = async function (event, context) {
   const { message } = JSON.parse(event.body || "{}");
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -24,4 +19,4 @@ export async function handler(event, context) {
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
-}
+};
