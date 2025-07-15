@@ -12,6 +12,7 @@ import NotionWorkspace from "./pages/NotionWorkspace";
 import Settings from "./pages/Settings"; // NEW
 import { Sidebar } from "./components/layout/Sidebar";
 import DiscordMessages from "./components/DiscordMessages";
+import McpNetlifyChat from "./components/McpNetlifyChat"; // NEW
 
 function App() {
   // Keep only necessary state
@@ -104,6 +105,15 @@ function App() {
                 element={
                   <AuthWrapper>
                     <Settings />
+                  </AuthWrapper>
+                }
+              />
+              {/* MCP Chat test route */}
+              <Route
+                path="/mcp-chat"
+                element={
+                  <AuthWrapper>
+                    <McpNetlifyChat />
                   </AuthWrapper>
                 }
               />

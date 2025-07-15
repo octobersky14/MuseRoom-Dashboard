@@ -1,0 +1,16 @@
+{
+  "name": "netlify-functions",
+  "version": "1.0.0",
+  "description": "Netlify Functions for MuseRoom Dashboard",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "@modelcontextprotocol/sdk": "^1.15.1",
+    "dotenv": "^16.6.1",
+    "mcp-client-typescript": "file:../../mcp-client-typescript"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
