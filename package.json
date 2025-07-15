@@ -18,6 +18,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.33.0",
     "@google/generative-ai": "^0.24.1",
+    "@anthropic-ai/sdk": "^0.36.3",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@radix-ui/react-avatar": "^1.0.4",
     "@radix-ui/react-dialog": "^1.1.14",

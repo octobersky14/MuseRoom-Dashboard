@@ -1,35 +1,15 @@
 {
   "name": "mcp-client-typescript",
   "version": "1.0.0",
-  "main": "dist/index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc --outDir build && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
-    "prepublishOnly": "npm run build"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "main": "index.js",
   "type": "module",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.36.3",
-    "@modelcontextprotocol/sdk": "^1.15.1",
-    "dotenv": "^16.6.1"
-  },
-  "devDependencies": {
-    "@types/node": "^22.16.3",
-    "typescript": "^5.8.3"
-  },
   "exports": {
     ".": {
-      "import": "./build/index.js",
-      "require": "./build/index.js"
+      "import": "./index.js",
+      "require": "./index.cjs"
     }
   },
-  "files": [
-    "build"
-  ],
-  "engines": {
-    "node": ">=16.0.0"
+  "scripts": {
+    "build": "tsc --outDir build && node -e \"require('fs').chmodSync('build/index.js', '755')\""
   }
 }
