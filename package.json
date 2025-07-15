@@ -18,6 +18,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.33.0",
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.15.1",
     "@radix-ui/react-avatar": "^1.0.4",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
@@ -44,7 +45,7 @@
     "express": "^5.1.0",
     "framer-motion": "^10.18.0",
     "lucide-react": "^0.294.0",
-    "mcp-client-typescript": "^1.0.0",
+    "mcp-client-typescript": "file:./mcp-client-typescript",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.6.3",
