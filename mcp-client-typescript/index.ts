@@ -9,8 +9,6 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import readline from "readline/promises";
 
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 
 /**
  * In many environments (e.g. Netlify functions) the working directory is set up
@@ -211,4 +209,39 @@ async function main() {
   }
 }
 
-main();
+/**
+ * Only run the CLI loop when this file is executed directly.
+ *
+ * This prevents Netlify Functions (or any other environment that `require`s or
+ * `import`s this module) from inadvertently starting the interactive CLI.
+ */
+const isDirectCliExecution = (() => {
+  // process.argv[1] is the entry script path when executed via `node script.js`
+  // In ESM, `import.meta.url` is the full file:// URL of the current module.
+  if (typeof process === "undefined" || !process.argv?.[1]) {
+    return false;
+  }
+  try {
+    const scriptPath = process.argv[1];
+    return import.meta.url.endsWith(scriptPath);
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectCliExecution) {
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  main();
+}
+
+/**
+ * Provide a CommonJS-compatible export so that environments using `require`
+ * (e.g. Netlify Functions by default) can access the class without needing a
+ * dynamic `import()`.
+ */
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore – `module` is not defined in ESM typings but exists in CJS
+if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  module.exports = { MCPClient };
+}
