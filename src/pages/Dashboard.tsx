@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { VoiceAgent } from "@/components/VoiceAgent";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -7,7 +6,6 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { motion } from "framer-motion";
 import { SplashCursor } from "@/components/ui/splash-cursor";
 import {
@@ -28,59 +26,50 @@ const Dashboard: React.FC = () => {
   // AI Assistant hook for MCP functionality
   const { mcpStatus, mcpTools } = useAIAssistant();
 
-  // State
-  const [selectedVoice, _setSelectedVoice] = useState(
-    "JBFqnCBsd6RMkjVDRZzb"
-  ); // Default ElevenLabs voice (George)
-  const [useElevenLabs, _setUseElevenLabs] = useState(true);
-  const [showChat, setShowChat] = useState(false);
-  const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
-  // Setter kept for future updates; may be unused for now
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [recentActivities, _setRecentActivities] = useState([
-    {
-      id: 1,
-      title: "Updated AI Team project",
-      time: "10 minutes ago",
-      type: "notion",
-    },
-    {
-      id: 2,
-      title: "New message in #general",
-      time: "25 minutes ago",
-      type: "discord",
-    },
-    {
-      id: 3,
-      title: "Meeting scheduled: Weekly Sync",
-      time: "1 hour ago",
-      type: "calendar",
-    },
-    {
-      id: 4,
-      title: "Task completed: Implement workspace analyzer",
-      time: "3 hours ago",
-      type: "notion",
-    },
-  ]);
+  // Simple chat state
+  const [messages, setMessages] = useState<{ role: string; content: string }[]>(
+    []
+  );
+  const [input, setInput] = useState("");
 
-  // currently not used in this component; keep underscored to avoid TS warning
-  const { toast: _toast } = useToast();
-  const elevenLabsApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
-
-  // Handler for ai-prompt submission
-  const handlePromptSend = (message: string) => {
-    setInitialPrompt(message);
-    setShowChat(true);
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    setMessages((msgs) => [...msgs, { role: "user", content: input }]);
+    setInput("");
+    try {
+      const res = await fetch("/.netlify/functions/mcp-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input }),
+      });
+      const data = await res.json();
+      if (data.response) {
+        setMessages((msgs) => [
+          ...msgs,
+          { role: "assistant", content: data.response },
+        ]);
+      } else if (data.error) {
+        setMessages((msgs) => [
+          ...msgs,
+          { role: "assistant", content: "Error: " + data.error },
+        ]);
+      }
+    } catch (err) {
+      setMessages((msgs) => [
+        ...msgs,
+        { role: "assistant", content: "Error: " + (err as Error).message },
+      ]);
+    }
   };
 
   // Handler for logo click
   const handleLogoClick = () => {
-    setShowChat(true);
-    setInitialPrompt(null);
-    if ((window as any).toggleVoiceListening) {
-      (window as any).toggleVoiceListening();
-    }
+    // This functionality is no longer needed with the new chat UI
+    // setShowChat(true);
+    // setInitialPrompt(null);
+    // if ((window as any).toggleVoiceListening) {
+    //   (window as any).toggleVoiceListening();
+    // }
   };
 
   // Stats data
@@ -245,27 +234,42 @@ const Dashboard: React.FC = () => {
             </motion.div>
           </motion.div>
 
-          {/* Prompt Input Box or AI Assistant */}
-          <div className="mb-8">
-            {!showChat ? (
-              <div className="max-w-xl mx-auto">
-                <PromptInputBox
-                  onSend={(msg) => handlePromptSend(msg)}
-                  placeholder="Ask MuseRoom anything..."
-                />
-              </div>
-            ) : (
-              <Card className="bg-gradient-to-br from-purple-900/30 via-[#232136]/80 to-pink-900/30 border border-purple-500/40 backdrop-blur-xl">
-                <VoiceAgent
-                  selectedVoice={selectedVoice}
-                  useElevenLabs={useElevenLabs}
-                  elevenLabsApiKey={elevenLabsApiKey}
-                  initialPrompt={initialPrompt}
-                  onPromptHandled={() => setInitialPrompt(null)}
-                  showChat={true}
-                />
-              </Card>
-            )}
+          {/* Simple Chatbox */}
+          <div className="mb-8 max-w-xl mx-auto">
+            <div className="bg-gray-900/60 border border-gray-800/60 rounded-lg p-4 mb-2 h-80 overflow-y-auto flex flex-col">
+              {messages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`mb-2 text-sm ${
+                    msg.role === "user"
+                      ? "text-right text-blue-300"
+                      : "text-left text-purple-300"
+                  }`}
+                >
+                  <span className="font-bold">
+                    {msg.role === "user" ? "You" : "MCP"}:
+                  </span>{" "}
+                  {msg.content}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:outline-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
+                }}
+                placeholder="Type a message..."
+              />
+              <button
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+                onClick={handleSend}
+              >
+                Send
+              </button>
+            </div>
           </div>
 
           {/* Stats Cards Section */}
@@ -329,31 +333,31 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {recentActivities.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex items-start p-3 rounded-lg hover:bg-gray-800/40 transition-colors"
-                    >
-                      <div className="mr-3 mt-0.5">
-                        {activity.type === "notion" ? (
-                          <FileText className="h-5 w-5 text-blue-400" />
-                        ) : activity.type === "discord" ? (
-                          <MessageSquare className="h-5 w-5 text-green-400" />
-                        ) : (
-                          <Calendar className="h-5 w-5 text-amber-400" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-200">
-                          {activity.title}
-                        </p>
-                        <p className="text-xs text-gray-400 flex items-center mt-1">
-                          <Clock className="h-3 w-3 mr-1 inline" />
-                          {activity.time}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                  {/* recentActivities.map((activity) => ( */}
+                  {/* <div */}
+                  {/*   key={activity.id} */}
+                  {/*   className="flex items-start p-3 rounded-lg hover:bg-gray-800/40 transition-colors" */}
+                  {/* > */}
+                  {/*   <div className="mr-3 mt-0.5"> */}
+                  {/*     {activity.type === "notion" ? ( */}
+                  {/*       <FileText className="h-5 w-5 text-blue-400" /> */}
+                  {/*     ) : activity.type === "discord" ? ( */}
+                  {/*       <MessageSquare className="h-5 w-5 text-green-400" /> */}
+                  {/*     ) : ( */}
+                  {/*       <Calendar className="h-5 w-5 text-amber-400" /> */}
+                  {/*     )} */}
+                  {/*   </div> */}
+                  {/*   <div className="flex-1"> */}
+                  {/*     <p className="text-sm font-medium text-gray-200"> */}
+                  {/*       {activity.title} */}
+                  {/*     </p> */}
+                  {/*     <p className="text-xs text-gray-400 flex items-center mt-1"> */}
+                  {/*       <Clock className="h-3 w-3 mr-1 inline" /> */}
+                  {/*       {activity.time} */}
+                  {/*     </p> */}
+                  {/*   </div> */}
+                  {/* </div> */}
+                  {/* ))} */}
                 </div>
               </CardContent>
             </Card>
