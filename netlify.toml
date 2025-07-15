@@ -1,5 +1,7 @@
 [build]
-  command = "npm run build && cd mcp-client-typescript && npm run build"
+# Use the custom build script that handles compiling the MCP client,
+# installing all dependencies and building the frontend.
+  command = "./netlify-build.sh"
   publish = "dist"
   functions = "netlify/functions"
 
@@ -31,18 +33,20 @@
     Access-Control-Allow-Headers = "Content-Type, Authorization"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
-# Pre-build step to install dependencies for mcp-client-typescript
+# Ensure the custom build script is executable before the build starts
 [build.lifecycle]
-  onBuild = """
-    echo "Installing mcp-client-typescript dependencies..."
-    cd mcp-client-typescript && npm install
-    echo "Installing function dependencies..."
-    cd ../netlify/functions && npm install
-  """
+  onPreBuild = "chmod +x netlify-build.sh"
 
 # Post-processing for functions
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  included_files = ["mcp-client-typescript/**"]
-  external_node_modules = ["@anthropic-ai/sdk", "@modelcontextprotocol/sdk"]
+  # Ensure only the compiled output (build) is shipped with the function
+  included_files = ["mcp-client-typescript/build/**"]
+  # Mark mcp-client-typescript as external so esbuild does NOT bundle it;
+  # the compiled output is copied via included_files instead.
+  external_node_modules = ["mcp-client-typescript", "@anthropic-ai/sdk", "@modelcontextprotocol/sdk"]
+
+# Development-specific overrides
+[context.development.environment]
+  MCP_DEBUG = "true"

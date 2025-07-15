@@ -1,0 +1,40 @@
+{
+  "presets": [
+    [
+      "@babel/preset-env",
+      {
+        "targets": {
+          "node": "16"
+        },
+        "modules": "auto"
+      }
+    ],
+    "@babel/preset-typescript"
+  ],
+  "plugins": [
+    [
+      "@babel/plugin-transform-modules-commonjs",
+      {
+        "allowTopLevelThis": true,
+        "loose": true,
+        "noInterop": false
+      }
+    ]
+  ],
+  "env": {
+    "esm": {
+      "presets": [
+        [
+          "@babel/preset-env",
+          {
+            "targets": {
+              "node": "16"
+            },
+            "modules": false
+          }
+        ]
+      ],
+      "plugins": []
+    }
+  }
+}
