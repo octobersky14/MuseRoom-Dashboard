@@ -137,7 +137,10 @@ mkdir -p "$MCP_CLIENT_FUNCTIONS_DIR"
 
 # Copy the built files to the functions node_modules directory
 cp -r "$BUILD_DIR"/* "$MCP_CLIENT_FUNCTIONS_DIR/"
-cp "$MCP_CLIENT_DIR/package.json" "$MCP_CLIENT_FUNCTIONS_DIR/"
+# Only copy package.json if it's different from the destination
+if [ ! -f "$MCP_CLIENT_FUNCTIONS_DIR/package.json" ] || ! cmp -s "$MCP_CLIENT_DIR/package.json" "$MCP_CLIENT_FUNCTIONS_DIR/package.json"; then
+  cp "$MCP_CLIENT_DIR/package.json" "$MCP_CLIENT_FUNCTIONS_DIR/"
+fi
 
 # Step 7: Build the main project
 print_step "Building the main project"
