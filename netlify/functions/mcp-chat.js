@@ -1,9 +1,10 @@
-const { MCPClient: NamedExport } = require("mcp-client-typescript");
+import { MCPClient as NamedExport } from "mcp-client-typescript";
 const MCPClient =
-  NamedExport ||
-  (require("mcp-client-typescript").default ??
-    require("mcp-client-typescript"));
-exports.handler = async function (event, context) {
+  NamedExport ??
+  (await import("mcp-client-typescript")).default ??
+  (await import("mcp-client-typescript")).MCPClient;
+
+export async function handler(event, context) {
   const { message } = JSON.parse(event.body || "{}");
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -12,17 +13,12 @@ exports.handler = async function (event, context) {
       body: JSON.stringify({ error: "API key not set" }),
     };
   }
+
   const mcp = new MCPClient({ anthropicApiKey: apiKey });
   try {
     const response = await mcp.processQuery(message);
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ response }),
-    };
+    return { statusCode: 200, body: JSON.stringify({ response }) };
   } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
-};
+}
