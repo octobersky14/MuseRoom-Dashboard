@@ -1,16 +1,17 @@
-// netlify/functions/mcp-chat.js
-const mcpModule = require("mcp-client-typescript");
-const MCPClient = mcpModule.MCPClient || mcpModule.default || mcpModule;
+/* netlify/functions/mcp-chat.js */
+const pkg = require("mcp-client-typescript");
+const MCPClient = pkg.MCPClient || pkg.default || pkg;
 
-exports.handler = async function (event, context) {
+async function handler(event, context) {
   const { message } = JSON.parse(event.body || "{}");
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey)
+  if (!apiKey) {
     return {
       statusCode: 500,
       body: JSON.stringify({ error: "API key not set" }),
     };
+  }
 
   try {
     const mcp = new MCPClient({ anthropicApiKey: apiKey });
@@ -19,4 +20,7 @@ exports.handler = async function (event, context) {
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
-};
+}
+
+/* THIS is what Netlify looks for */
+module.exports = { handler };
