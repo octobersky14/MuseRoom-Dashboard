@@ -3,10 +3,17 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
   "exports": {
     ".": {
       "import": "./index.js",
       "require": "./index.cjs"
     }
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
   }
 }
