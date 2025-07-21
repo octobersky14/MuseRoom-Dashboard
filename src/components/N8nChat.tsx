@@ -302,7 +302,7 @@ const N8nChat: React.FC<N8nChatProps> = ({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="p-6 border-t border-white/10 bg-gradient-to-r from-gray-900/50 to-gray-800/50 backdrop-blur-xl"
+        className="p-6 border-t border-gray-700/30 bg-gradient-to-r from-gray-900/90 to-gray-800/90 backdrop-blur-xl"
       >
         <div className="flex items-end space-x-4">
           <div className="flex-1 relative">
@@ -314,11 +314,11 @@ const N8nChat: React.FC<N8nChatProps> = ({
               onKeyPress={handleKeyPress}
               placeholder="Type your message..."
               disabled={!isConnected || isLoading}
-              className="w-full px-6 py-4 bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-white/20 rounded-2xl text-white placeholder-gray-400 backdrop-blur-xl focus:outline-none focus:border-purple-500/50 focus:ring-4 focus:ring-purple-500/20 transition-all duration-300 disabled:opacity-50 font-medium shadow-lg"
+              className="w-full px-6 py-4 bg-gradient-to-br from-gray-900/80 to-gray-800/80 border border-gray-600/30 rounded-2xl text-white placeholder-gray-500 backdrop-blur-xl focus:outline-none focus:border-purple-500/60 focus:ring-4 focus:ring-purple-500/30 transition-all duration-300 disabled:opacity-50 font-medium shadow-xl shadow-black/20"
             />
             <button
               onClick={() => inputRef.current?.focus()}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-purple-400 transition-all duration-200 hover:scale-110"
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-purple-400 transition-all duration-200 hover:scale-110 hover:bg-gray-800/50 rounded-lg"
             >
               <Paperclip className="w-5 h-5" />
             </button>
