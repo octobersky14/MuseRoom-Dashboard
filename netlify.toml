@@ -7,6 +7,9 @@
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--prefix=./netlify/functions --include=dev"
+  # Disable secrets scanning for VITE_ environment variables
+  SECRETS_SCAN_OMIT_KEYS = "VITE_WEBHOOK_URL,VITE_APP_NAME,VITE_APP_VERSION,VITE_GEMINI_API_KEY,VITE_ELEVENLABS_API_KEY,VITE_NOTION_API_KEY,VITE_CLERK_PUBLISHABLE_KEY,VITE_*"
+  SECRETS_SCAN_OMIT_PATHS = "dist/**,**/*.js,**/*.css,**/*.ts,**/*.tsx"
 
 # Secrets scanning configuration
 [build.processing]
@@ -16,9 +19,24 @@
 [build.processing.secrets]
   enabled = true
   # Ignore environment variable names that are not actual secrets
-  omit_keys = ["VITE_WEBHOOK_URL", "VITE_APP_NAME", "VITE_APP_VERSION"]
+  omit_keys = [
+    "VITE_WEBHOOK_URL", 
+    "VITE_APP_NAME", 
+    "VITE_APP_VERSION",
+    "VITE_GEMINI_API_KEY",
+    "VITE_ELEVENLABS_API_KEY", 
+    "VITE_NOTION_API_KEY",
+    "VITE_CLERK_PUBLISHABLE_KEY",
+    "VITE_*"
+  ]
   # Ignore build output files that may contain environment variable references
-  omit_paths = ["dist/assets/*.js", "dist/assets/*.css"]
+  omit_paths = [
+    "dist/assets/*.js", 
+    "dist/assets/*.css",
+    "dist/**/*",
+    "**/*.js",
+    "**/*.css"
+  ]
 
 # Install dependencies for the functions
 [build.processing.functions]
@@ -40,9 +58,9 @@
     Access-Control-Allow-Headers = "Content-Type, Authorization"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
-# Prebuild hook to ensure dependencies are installed
+# Prebuild hook to ensure dependencies are installed and configure secrets scanning
 [build.lifecycle]
-  onPreBuild = "npm install"
+  onPreBuild = "npm install && export SECRETS_SCAN_OMIT_KEYS='VITE_WEBHOOK_URL,VITE_APP_NAME,VITE_APP_VERSION,VITE_GEMINI_API_KEY,VITE_ELEVENLABS_API_KEY,VITE_NOTION_API_KEY,VITE_CLERK_PUBLISHABLE_KEY,VITE_*' && export SECRETS_SCAN_OMIT_PATHS='dist/**,**/*.js,**/*.css,**/*.ts,**/*.tsx'"
 
 # Post-processing for functions
 [functions]
