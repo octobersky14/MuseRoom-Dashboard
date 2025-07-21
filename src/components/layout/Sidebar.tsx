@@ -9,7 +9,8 @@ import {
   Settings,
   Brain,
   Zap,
-  User
+  User,
+  MessageCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -105,29 +106,17 @@ export function Sidebar({
       active: location.pathname === "/"
     },
     {
-      name: "Notion Workspace",
-      href: "/notion",
-      icon: FileText,
-      active: location.pathname === "/notion"
-    },
-    {
-      name: "AI Assistant",
-      href: "/assistant",
-      icon: Brain,
-      active: location.pathname === "/assistant"
-    },
-    {
-      name: "Messages",
-      href: "/messages",
-      icon: MessageSquare,
+      name: "AI Chat",
+      href: "/chat",
+      icon: MessageCircle,
       badge: "New",
-      active: location.pathname === "/messages"
+      active: location.pathname === "/chat"
     },
     {
-      name: "Calendar",
-      href: "/calendar",
-      icon: Calendar,
-      active: location.pathname === "/calendar"
+      name: "Discord",
+      href: "/discord",
+      icon: MessageSquare,
+      active: location.pathname === "/discord"
     },
     {
       name: "Settings",

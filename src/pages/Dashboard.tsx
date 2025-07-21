@@ -16,51 +16,21 @@ import {
   Activity,
   Users,
   Clock,
+  MessageCircle,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { McpStatusIndicator } from "@/components/McpStatusIndicator";
-import { useAIAssistant } from "@/hooks/useAIAssistant";
+import N8nChat from "@/components/N8nChat";
+import { getWebhookUrl } from "@/config/n8n";
+// AI components removed
 
 const Dashboard: React.FC = () => {
   // AI Assistant hook for MCP functionality
-  const { mcpStatus, mcpTools } = useAIAssistant();
+  // const { mcpStatus, mcpTools } = useAIAssistant(); // Removed as per edit hint
 
-  // Simple chat state
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>(
-    []
-  );
-  const [input, setInput] = useState("");
-
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    setMessages((msgs) => [...msgs, { role: "user", content: input }]);
-    setInput("");
-    try {
-      const res = await fetch("/.netlify/functions/mcp-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
-      });
-      const data = await res.json();
-      if (data.response) {
-        setMessages((msgs) => [
-          ...msgs,
-          { role: "assistant", content: data.response },
-        ]);
-      } else if (data.error) {
-        setMessages((msgs) => [
-          ...msgs,
-          { role: "assistant", content: "Error: " + data.error },
-        ]);
-      }
-    } catch (err) {
-      setMessages((msgs) => [
-        ...msgs,
-        { role: "assistant", content: "Error: " + (err as Error).message },
-      ]);
-    }
-  };
+  // n8n chat configuration
+  const webhookUrl = getWebhookUrl();
+  const [showChat, setShowChat] = useState(false);
 
   // Handler for logo click
   const handleLogoClick = () => {
@@ -234,42 +204,26 @@ const Dashboard: React.FC = () => {
             </motion.div>
           </motion.div>
 
-          {/* Simple Chatbox */}
-          <div className="mb-8 max-w-xl mx-auto">
-            <div className="bg-gray-900/60 border border-gray-800/60 rounded-lg p-4 mb-2 h-80 overflow-y-auto flex flex-col">
-              {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`mb-2 text-sm ${
-                    msg.role === "user"
-                      ? "text-right text-blue-300"
-                      : "text-left text-purple-300"
-                  }`}
-                >
-                  <span className="font-bold">
-                    {msg.role === "user" ? "You" : "MCP"}:
-                  </span>{" "}
-                  {msg.content}
+          {/* AI Chat Integration */}
+          <div className="mb-8 max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+            >
+              <div className="relative">
+                {/* Background glow effects */}
+                <div className="absolute -inset-4 bg-gradient-to-br from-purple-500/20 via-pink-500/20 to-blue-500/20 rounded-3xl blur-2xl" />
+                <div className="absolute -inset-2 bg-gradient-to-br from-purple-500/10 via-pink-500/10 to-blue-500/10 rounded-3xl blur-xl" />
+
+                {/* Main container */}
+                <div className="relative bg-gradient-to-br from-gray-900/90 via-gray-800/80 to-gray-900/90 border border-white/20 rounded-3xl backdrop-blur-2xl shadow-2xl overflow-hidden">
+                  <div className="h-[600px]">
+                    <N8nChat webhookUrl={webhookUrl} className="h-full" />
+                  </div>
                 </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:outline-none"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSend();
-                }}
-                placeholder="Type a message..."
-              />
-              <button
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-                onClick={handleSend}
-              >
-                Send
-              </button>
-            </div>
+              </div>
+            </motion.div>
           </div>
 
           {/* Stats Cards Section */}
@@ -306,11 +260,10 @@ const Dashboard: React.FC = () => {
 
           {/* MCP Status Indicator */}
           <div className="mb-8">
-            <McpStatusIndicator
-              mcpStatus={mcpStatus}
-              mcpTools={mcpTools}
-              serverName="Notion MCP"
-            />
+            {/* Removed McpStatusIndicator as per edit hint */}
+            <p className="text-center text-gray-400 text-sm">
+              MCP Status: Not available in this version.
+            </p>
           </div>
 
           {/* Recent Activity and Quick Access Section */}
