@@ -3,11 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, Link } from "react-router-dom";
 import {
   LayoutDashboard,
-  FileText,
   MessageSquare,
-  Calendar,
   Settings,
-  Brain,
   Zap,
   User,
   MessageCircle

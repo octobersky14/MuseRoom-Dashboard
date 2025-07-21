@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -15,10 +15,7 @@ import {
   Calendar,
   Activity,
   Users,
-  Clock,
-  MessageCircle,
 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import N8nChat from "@/components/N8nChat";
 import { getWebhookUrl } from "@/config/n8n";
@@ -30,7 +27,7 @@ const Dashboard: React.FC = () => {
 
   // n8n chat configuration
   const webhookUrl = getWebhookUrl();
-  const [showChat, setShowChat] = useState(false);
+  // const [showChat, setShowChat] = useState(false);
 
   // Handler for logo click
   const handleLogoClick = () => {

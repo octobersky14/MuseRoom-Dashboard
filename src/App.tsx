@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/toaster";
 import { AuthWrapper } from "@/components/auth/AuthWrapper";
