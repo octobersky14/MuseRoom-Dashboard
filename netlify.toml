@@ -38,7 +38,7 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
   # Mark external dependencies that should not be bundled by esbuild
-  external_node_modules = ["@anthropic-ai/sdk", "@modelcontextprotocol/sdk"]
+  external_node_modules = ["mcp-client-typescript", "@anthropic-ai/sdk", "@modelcontextprotocol/sdk"]
 
 # Development-specific overrides
 [context.development.environment]

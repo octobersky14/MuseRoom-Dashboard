@@ -8,8 +8,5 @@
       "import": "./index.js",
       "require": "./index.cjs"
     }
-  },
-  "scripts": {
-    "build": "tsc --outDir build && node -e \"require('fs').chmodSync('build/index.js', '755')\""
   }
 }
