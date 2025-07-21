@@ -77,16 +77,20 @@ const N8nChat: React.FC<N8nChatProps> = ({
     setIsTyping(true);
 
     try {
+      const requestBody = {
+        message: userMessage.content,
+        sessionId: "museroom-session",
+      };
+
+      // Debug logging to see what we're sending
+      console.log("Sending to n8n:", requestBody);
+
       const response = await fetch(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          action: "sendMessage",
-          chatInput: userMessage.content,
-          sessionId: "museroom-session",
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -95,12 +99,17 @@ const N8nChat: React.FC<N8nChatProps> = ({
 
       const data = await response.json();
 
+      // Debug logging to see what n8n is returning
+      console.log("n8n response:", data);
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content:
           data.response ||
           data.message ||
+          data.text ||
+          data.content ||
           "I received your message but couldn't process it properly.",
         timestamp: new Date(),
       };
