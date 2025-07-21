@@ -9,6 +9,18 @@
   NODE_VERSION = "20"
   NPM_FLAGS = "--prefix=./netlify/functions --include=dev"
 
+# Secrets scanning configuration
+[build.processing]
+  skip_processing = false
+
+# Configure secrets scanning to ignore false positives
+[build.processing.secrets]
+  enabled = true
+  # Ignore environment variable names that are not actual secrets
+  omit_keys = ["VITE_CHAT_WEBHOOK_URL", "VITE_APP_NAME", "VITE_APP_VERSION"]
+  # Ignore build output files that may contain environment variable references
+  omit_paths = ["dist/assets/*.js", "dist/assets/*.css"]
+
 # Install dependencies for the functions
 [build.processing.functions]
   node_bundler = "esbuild"

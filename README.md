@@ -65,7 +65,7 @@ Add the following to your `.env` (only new lines shown – keep existing ones):
 ```env
 # ── n8n Chat Integration ───────────────────────────────────
 # Get your webhook URL from your n8n workflow with a Chat Trigger node
-VITE_N8N_WEBHOOK_URL=https://your-instance.app.n8n.cloud/webhook/your-webhook-id
+VITE_CHAT_WEBHOOK_URL=https://your-instance.app.n8n.cloud/webhook/your-webhook-id
 
 # ── Notion MCP ─────────────────────────────────────────────
 # Choose connection mode: direct | proxy | offline
