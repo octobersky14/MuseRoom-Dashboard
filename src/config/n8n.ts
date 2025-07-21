@@ -2,7 +2,7 @@
 export const n8nConfig = {
   // Webhook URL for the n8n chat workflow
   // Replace this with your actual n8n webhook URL
-  webhookUrl: import.meta.env.VITE_CHAT_WEBHOOK_URL || "",
+  webhookUrl: import.meta.env.VITE_WEBHOOK_URL || "",
 
   // Chat configuration
   chat: {
@@ -47,14 +47,14 @@ export const getWebhookUrl = (): string => {
   const url = n8nConfig.webhookUrl;
   if (!url) {
     console.warn(
-      "CHAT_WEBHOOK_URL is not configured. Please set VITE_CHAT_WEBHOOK_URL in your environment variables."
+      "WEBHOOK_URL is not configured. Please set VITE_WEBHOOK_URL in your environment variables."
     );
     return "";
   }
 
   if (!isValidWebhookUrl(url)) {
     console.error(
-      "Invalid CHAT_WEBHOOK_URL format. Please check your environment configuration."
+      "Invalid WEBHOOK_URL format. Please check your environment configuration."
     );
     return "";
   }

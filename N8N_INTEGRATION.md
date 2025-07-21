@@ -64,12 +64,12 @@ The MuseRoom Dashboard now includes a powerful AI chat interface powered by n8n 
 2. **Add your n8n webhook URL**:
 
    ```bash
-   VITE_CHAT_WEBHOOK_URL=https://your-instance.app.n8n.cloud/webhook/your-webhook-id
+   VITE_WEBHOOK_URL=https://your-instance.app.n8n.cloud/webhook/your-webhook-id
    ```
 
 3. **For local development**:
    ```bash
-   VITE_CHAT_WEBHOOK_URL=http://localhost:5678/webhook/your-webhook-id
+   VITE_WEBHOOK_URL=http://localhost:5678/webhook/your-webhook-id
    ```
 
 ### 3. Webhook Payload Format
@@ -152,7 +152,7 @@ Modify the chat configuration in `src/config/n8n.ts`:
 
 ```typescript
 export const n8nConfig = {
-  webhookUrl: import.meta.env.VITE_CHAT_WEBHOOK_URL || "",
+  webhookUrl: import.meta.env.VITE_WEBHOOK_URL || "",
   chat: {
     mode: "window", // 'window' | 'fullscreen'
     showWelcomeScreen: true,

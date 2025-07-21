@@ -17,7 +17,7 @@
 [build.processing.secrets]
   enabled = true
   # Ignore environment variable names that are not actual secrets
-  omit_keys = ["VITE_CHAT_WEBHOOK_URL", "VITE_APP_NAME", "VITE_APP_VERSION"]
+  omit_keys = ["VITE_WEBHOOK_URL", "VITE_APP_NAME", "VITE_APP_VERSION"]
   # Ignore build output files that may contain environment variable references
   omit_paths = ["dist/assets/*.js", "dist/assets/*.css"]
 
