@@ -94,7 +94,14 @@ const N8nChat: React.FC<N8nChatProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error(
+          "n8n response not ok:",
+          response.status,
+          response.statusText
+        );
+        const errorText = await response.text();
+        console.error("n8n error response:", errorText);
+        throw new Error(`HTTP error! status: ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
