@@ -77,20 +77,22 @@ const N8nChat: React.FC<N8nChatProps> = ({
     setIsTyping(true);
 
     try {
-      const requestBody = {
+      const params = new URLSearchParams({
         message: userMessage.content,
         sessionId: "museroom-session",
-      };
+      });
 
       // Debug logging to see what we're sending
-      console.log("Sending to n8n:", requestBody);
+      console.log("Sending to n8n:", {
+        message: userMessage.content,
+        sessionId: "museroom-session",
+      });
 
-      const response = await fetch(webhookUrl, {
-        method: "POST",
+      const response = await fetch(`${webhookUrl}?${params}`, {
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
