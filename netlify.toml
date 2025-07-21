@@ -1,7 +1,6 @@
 [build]
-# Use the custom build script that handles compiling the MCP client,
-# installing all dependencies and building the frontend.
-  command = "./netlify-build.sh"
+# Use the standard npm build process with prebuild script
+  command = "npm run build"
   publish = "dist"
   functions = "netlify/functions"
 
@@ -41,9 +40,9 @@
     Access-Control-Allow-Headers = "Content-Type, Authorization"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
-# Ensure the custom build script is executable before the build starts
+# Prebuild hook to ensure dependencies are installed
 [build.lifecycle]
-  onPreBuild = "chmod +x netlify-build.sh"
+  onPreBuild = "npm install"
 
 # Post-processing for functions
 [functions]
