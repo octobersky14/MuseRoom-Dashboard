@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Test script for n8n webhook
-# Replace YOUR_WEBHOOK_URL with your actual n8n webhook URL
+# Set your webhook URL as an environment variable: export VITE_N8N_WEBHOOK_URL="your_webhook_url"
 
-WEBHOOK_URL="YOUR_WEBHOOK_URL"
+WEBHOOK_URL="${VITE_N8N_WEBHOOK_URL:-YOUR_WEBHOOK_URL}"
 
 # Check if webhook URL is set
-if [ "$WEBHOOK_URL" = "https://hadleycarr04.app.n8n.cloud/webhook/804e229c-1610-4155-b24f-880c370bafc4" ]; then
-    echo "❌ Please set your actual webhook URL in this script"
-    echo "   Replace 'YOUR_WEBHOOK_URL' with your n8n webhook URL"
+if [ "$WEBHOOK_URL" = "YOUR_WEBHOOK_URL" ]; then
+    echo "❌ Please set your webhook URL as an environment variable:"
+    echo "   export VITE_N8N_WEBHOOK_URL=\"your_webhook_url\""
     exit 1
 fi
 
@@ -16,7 +16,7 @@ echo "🔗 Testing n8n webhook: $WEBHOOK_URL"
 echo "📤 Sending test message..."
 
 # Test payload matching what the React app sends
-curl -X GET "https://hadleycarr04.app.n8n.cloud/webhook/804e229c-1610-4155-b24f-880c370bafc4?message=Hello%20from%20terminal%20test!&sessionId=terminal-test-session" \
+curl -X GET "$WEBHOOK_URL?message=Hello%20from%20terminal%20test!&sessionId=terminal-test-session" \
   -H "Content-Type: application/json" \
   -w "\n\n📊 Response Status: %{http_code}\n📊 Response Time: %{time_total}s\n" \
   -s
