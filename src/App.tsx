@@ -6,8 +6,6 @@ import { AuthWrapper } from "@/components/auth/AuthWrapper";
 
 // Import page components
 import Dashboard from "./pages/Dashboard";
-import Settings from "./pages/Settings"; // NEW
-import Chat from "./pages/Chat"; // NEW
 import { Sidebar } from "./components/layout/Sidebar";
 import DiscordMessages from "./components/DiscordMessages";
 
@@ -46,22 +44,6 @@ function App() {
                 element={
                   <AuthWrapper>
                     <DiscordMessages />
-                  </AuthWrapper>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <AuthWrapper>
-                    <Settings />
-                  </AuthWrapper>
-                }
-              />
-              <Route
-                path="/chat"
-                element={
-                  <AuthWrapper>
-                    <Chat />
                   </AuthWrapper>
                 }
               />

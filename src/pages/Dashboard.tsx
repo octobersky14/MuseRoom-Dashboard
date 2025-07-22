@@ -101,7 +101,7 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 relative overflow-hidden">
       {/* Background Effects */}
-      <div className="fixed inset-0 z-0 opacity-40">
+      <div className="fixed inset-0 z-10 opacity-80">
         <SplashCursor
           TRANSPARENT={true}
           BACK_COLOR={{ r: 0.01, g: 0.01, b: 0.03 }}
@@ -114,9 +114,9 @@ const Dashboard: React.FC = () => {
           SHADING={true}
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 via-transparent to-pink-900/10 pointer-events-none z-1" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(139,92,246,0.08),transparent_70%)] pointer-events-none z-2" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.06),transparent_70%)] pointer-events-none z-2" />
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 via-transparent to-pink-900/10 pointer-events-none z-20" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(139,92,246,0.08),transparent_70%)] pointer-events-none z-20" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.06),transparent_70%)] pointer-events-none z-20" />
 
       {/* Main Content (shifted to account for the 80 px collapsed sidebar;
           the sidebar expands over the content on hover, so a fixed offset

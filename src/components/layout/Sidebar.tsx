@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useContext, createContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, Link } from "react-router-dom";
-import {
-  LayoutDashboard,
-  MessageSquare,
-  Settings,
-  Zap,
-  User,
-  MessageCircle
-} from "lucide-react";
+import { LayoutDashboard, MessageSquare, Zap, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Create a context for sidebar state
@@ -21,7 +14,7 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType>({
   sidebarWidth: 80,
   isExpanded: false,
-  isHovering: false
+  isHovering: false,
 });
 
 // Hook to use sidebar context
@@ -41,10 +34,10 @@ interface NavItem {
   active?: boolean;
 }
 
-export function Sidebar({ 
-  className, 
+export function Sidebar({
+  className,
   onWidthChange,
-  defaultCollapsed = true
+  defaultCollapsed = true,
 }: SidebarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
@@ -65,7 +58,7 @@ export function Sidebar({
   useEffect(() => {
     const newWidth = isCollapsed && !isHovered ? 80 : 280;
     setSidebarWidth(newWidth);
-    
+
     // Notify parent component about width change
     if (onWidthChange) {
       onWidthChange(newWidth);
@@ -100,26 +93,13 @@ export function Sidebar({
       name: "Dashboard",
       href: "/",
       icon: LayoutDashboard,
-      active: location.pathname === "/"
-    },
-    {
-      name: "AI Chat",
-      href: "/chat",
-      icon: MessageCircle,
-      badge: "New",
-      active: location.pathname === "/chat"
+      active: location.pathname === "/",
     },
     {
       name: "Discord",
       href: "/discord",
       icon: MessageSquare,
-      active: location.pathname === "/discord"
-    },
-    {
-      name: "Settings",
-      href: "/settings",
-      icon: Settings,
-      active: location.pathname === "/settings"
+      active: location.pathname === "/discord",
     },
   ];
 
@@ -127,7 +107,7 @@ export function Sidebar({
   const contextValue: SidebarContextType = {
     sidebarWidth,
     isExpanded: !isCollapsed || isHovered,
-    isHovering: isHovered
+    isHovering: isHovered,
   };
 
   return (
@@ -155,19 +135,16 @@ export function Sidebar({
         )}
         style={{
           width: `${sidebarWidth}px`,
-          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+          transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         }}
       >
         {/* Floating glow effects */}
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-cyan-500/10 blur-xl" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-purple-500/5 to-transparent" />
-        
+
         {/* Logo */}
         <div className="relative p-6 border-b border-slate-700/50">
-          <motion.div 
-            className="flex items-center gap-3"
-            layout
-          >
+          <motion.div className="flex items-center gap-3" layout>
             <div className="relative">
               <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/25">
                 <Zap className="w-4 h-4 text-white" />
@@ -183,7 +160,9 @@ export function Sidebar({
                   transition={{ duration: 0.2 }}
                   className="flex flex-col"
                 >
-                  <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-500 bg-clip-text text-transparent font-semibold text-lg">MuseRoom</span>
+                  <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-500 bg-clip-text text-transparent font-semibold text-lg">
+                    MuseRoom
+                  </span>
                   <span className="text-slate-400 text-xs">Dashboard</span>
                 </motion.div>
               )}
@@ -216,9 +195,9 @@ export function Sidebar({
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
                       className={`absolute inset-0 rounded-xl blur-lg ${
-                        isActive 
-                          ? 'bg-gradient-to-r from-purple-500/30 to-blue-500/30' 
-                          : 'bg-gradient-to-r from-slate-500/20 to-slate-400/20'
+                        isActive
+                          ? "bg-gradient-to-r from-purple-500/30 to-blue-500/30"
+                          : "bg-gradient-to-r from-slate-500/20 to-slate-400/20"
                       }`}
                     />
                   )}
@@ -230,14 +209,18 @@ export function Sidebar({
                     whileTap={{ scale: 0.98 }}
                     className={`relative w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group ${
                       isActive
-                        ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20 text-white border border-purple-500/30'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                        ? "bg-gradient-to-r from-purple-500/20 to-blue-500/20 text-white border border-purple-500/30"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/50"
                     }`}
                   >
                     <div className="relative">
-                      <Icon className={`w-5 h-5 transition-colors ${
-                        isActive ? 'text-purple-400' : 'text-slate-400 group-hover:text-white'
-                      }`} />
+                      <Icon
+                        className={`w-5 h-5 transition-colors ${
+                          isActive
+                            ? "text-purple-400"
+                            : "text-slate-400 group-hover:text-white"
+                        }`}
+                      />
                       {isActive && (
                         <div className="absolute inset-0 blur-sm">
                           <Icon className="w-5 h-5 text-purple-400 opacity-50" />
@@ -261,22 +244,24 @@ export function Sidebar({
 
                     {/* Tooltip for collapsed state */}
                     <AnimatePresence>
-                      {isCollapsed && !isHovered && hoveredItem === item.name && (
-                        <motion.div
-                          initial={{ opacity: 0, x: -10, scale: 0.9 }}
-                          animate={{ opacity: 1, x: 0, scale: 1 }}
-                          exit={{ opacity: 0, x: -10, scale: 0.9 }}
-                          className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg border border-slate-700 shadow-xl z-50 whitespace-nowrap"
-                        >
-                          {item.name}
-                          {item.badge && (
-                            <span className="ml-2 bg-purple-500 text-xs px-1.5 py-0.5 rounded-full">
-                              {item.badge}
-                            </span>
-                          )}
-                          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-slate-800 border-l border-b border-slate-700 rotate-45" />
-                        </motion.div>
-                      )}
+                      {isCollapsed &&
+                        !isHovered &&
+                        hoveredItem === item.name && (
+                          <motion.div
+                            initial={{ opacity: 0, x: -10, scale: 0.9 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: -10, scale: 0.9 }}
+                            className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg border border-slate-700 shadow-xl z-50 whitespace-nowrap"
+                          >
+                            {item.name}
+                            {item.badge && (
+                              <span className="ml-2 bg-purple-500 text-xs px-1.5 py-0.5 rounded-full">
+                                {item.badge}
+                              </span>
+                            )}
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-slate-800 border-l border-b border-slate-700 rotate-45" />
+                          </motion.div>
+                        )}
                     </AnimatePresence>
                   </motion.div>
                 </Link>
@@ -296,12 +281,16 @@ export function Sidebar({
                 <div className="absolute -inset-1 bg-gradient-to-br from-purple-400 to-blue-600 rounded-full blur-sm opacity-30 animate-pulse" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-white font-medium text-sm truncate">User Account</div>
-                <div className="text-slate-400 text-xs truncate">Workspace Admin</div>
+                <div className="text-white font-medium text-sm truncate">
+                  User Account
+                </div>
+                <div className="text-slate-400 text-xs truncate">
+                  Workspace Admin
+                </div>
               </div>
             </div>
           )}
-          
+
           {isCollapsed && !isHovered && (
             <div className="flex justify-center">
               <div className="relative">
