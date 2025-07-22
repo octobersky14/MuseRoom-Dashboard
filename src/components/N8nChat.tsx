@@ -118,6 +118,8 @@ const N8nChat: React.FC<N8nChatProps> = ({
         message: userMessage.content,
         sessionId: "museroom-session",
       });
+      console.log("Webhook URL:", webhookUrl);
+      console.log("Full URL:", `${webhookUrl}?${params}`);
 
       const response = await fetch(`${webhookUrl}?${params}`, {
         method: "GET",
@@ -137,7 +139,29 @@ const N8nChat: React.FC<N8nChatProps> = ({
         throw new Error(`HTTP error! status: ${response.status}: ${errorText}`);
       }
 
-      const data = await response.json();
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const responseText = await response.text();
+        console.error("n8n returned non-JSON response:", responseText);
+        throw new Error(
+          `Expected JSON response but got: ${contentType}. Response: ${responseText.substring(
+            0,
+            200
+          )}...`
+        );
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        const responseText = await response.text();
+        console.error("Failed to parse n8n response as JSON:", responseText);
+        throw new Error(
+          `Invalid JSON response from n8n: ${responseText.substring(0, 200)}...`
+        );
+      }
 
       // Debug logging to see what n8n is returning
       console.log("n8n response:", data);
@@ -161,7 +185,9 @@ const N8nChat: React.FC<N8nChatProps> = ({
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content:
-          "Sorry, I'm having trouble connecting right now. Please check your n8n workflow configuration.",
+          error instanceof Error
+            ? `Error: ${error.message}. Please check your n8n workflow configuration and ensure it returns valid JSON.`
+            : "Sorry, I'm having trouble connecting right now. Please check your n8n workflow configuration.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
