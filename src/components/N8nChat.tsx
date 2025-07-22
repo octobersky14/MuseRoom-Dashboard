@@ -170,6 +170,7 @@ const N8nChat: React.FC<N8nChatProps> = ({
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content:
+          data.output ||
           data.response ||
           data.message ||
           data.text ||
